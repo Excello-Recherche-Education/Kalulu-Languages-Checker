@@ -1,0 +1,11 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+
+# Export output. The .gdignore is kept so Godot never scans the exported files
+# back in as project resources.
+/build/*
+!/build/.gdignore
+
+# macOS
+.DS_Store
