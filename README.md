@@ -19,7 +19,7 @@ project by [Excello Recherche & Éducation](https://github.com/Excello-Recherche
 1. **Get a pack.** The first screen lists the packs published in
    [Kalulu-Languages releases](https://github.com/Excello-Recherche-Education/Kalulu-Languages/releases)
    with their sizes, and a download button for each.
-2. **Open it.** Drag the `.zip` onto the page, or use the file button. The pack
+2. **Open it.** Use the file button, or drag the `.zip` onto the page. The pack
    is read locally; it never leaves the machine.
 3. **Check it.** Four tabs — **GP**, **Syllables**, **Words**, **Sentences** —
    each listing every entry with its lesson number, a ▶ button for its
@@ -97,7 +97,10 @@ media the checker does not use. Handling that in a browser shapes the design:
   dialog from inside a real click on a real element, and by the time Godot
   reports a button press the browser is no longer in that click. So a
   transparent `<input type="file">` is parked exactly on top of the Godot button
-  and follows it. Drag and drop goes through the engine's own handler.
+  and follows it. Drag and drop goes through the engine's own handler, which
+  resolves the drop with `webkitGetAsEntry()` — that only answers for a drag
+  that really came from the desktop, so it cannot be covered by the automated
+  test and needs one manual check per deployment.
 
 ### Layout
 

@@ -63,7 +63,8 @@ func _ready() -> void:
 	column.add_child(HSeparator.new())
 	column.add_child(_heading("Step 2 — Open the pack you downloaded", 20, ACCENT_COLOR))
 	column.add_child(_paragraph(
-			"Drag the .zip file anywhere onto this page, or use the button below. "
+			"Use the button below to open the .zip file you just downloaded — "
+			+ "you can also drag it anywhere onto this page. "
 			+ "Nothing is uploaded: the pack is read here, on your own computer."))
 
 	var actions: HBoxContainer = HBoxContainer.new()

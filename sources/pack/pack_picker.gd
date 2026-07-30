@@ -2,18 +2,20 @@ class_name PackPicker
 extends Node
 ## Gets a language pack archive from the tester's own computer.
 ##
-## Two ways in, because in a browser neither one alone is enough:
+## Two ways in:
 ##
+## - The browse button, which is the tested path. A browser only opens a file
+##   dialog from inside a real click on a real HTML element, and by the time
+##   Godot reports a button press the browser is no longer in that click. So
+##   instead of calling the dialog ourselves, a transparent <input type="file">
+##   is parked exactly on top of the Godot button and the tester clicks that.
+##   Reading the picked file then has to be done by hand, a slice at a time,
+##   because there is no path to hand to ZIPReader.
 ## - Dropping the file on the page. The engine copies it into its virtual
 ##   filesystem and reports the path through Window.files_dropped, so there is
-##   nothing to do here beyond listening. Works on desktop too.
-## - The browse button. A browser only opens a file dialog from inside a real
-##   click on a real HTML element, and by the time Godot reports a button press
-##   the browser is no longer in that click. So instead of calling the dialog
-##   ourselves, a transparent <input type="file"> is parked exactly on top of
-##   the Godot button and the tester clicks that. Reading the picked file then
-##   has to be done by hand, a slice at a time, because there is no path to
-##   hand to ZIPReader.
+##   nothing to do here beyond listening. This cannot be exercised by an
+##   automated test: the engine resolves the drop with webkitGetAsEntry(), which
+##   only answers for a drag that really came from the desktop.
 ##
 ## On desktop the browse button is a plain FileDialog.
 

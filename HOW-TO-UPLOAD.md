@@ -205,10 +205,16 @@ Open the URL and confirm, in order:
    `Build configuration: … single-threaded, GDExtension support.`
    If `GDExtension support` is missing, the build was made without
    `Extensions Support` and no pack will ever open — rebuild.
-4. Download a pack, then drop it on the page. A progress bar appears, then the
-   four tabs (GP / Syllables / Words / Sentences) fill with entries.
+4. Download a pack and open it with **Choose a .zip file…**. A progress bar
+   appears, then the four tabs (GP / Syllables / Words / Sentences) fill with
+   entries.
 5. Press a ▶ button and listen. Sound is confirmation that the whole chain
    works.
+6. Reload the page and **drag** the same .zip onto it. This second route cannot
+   be checked automatically — a real drag from the desktop is the only way to
+   exercise it — so please confirm it by hand once per deployment. If it does
+   not work, the button still does, and the wording on the page leads with the
+   button.
 
 In the Network tab, `index.side.wasm` should show a transfer size of about
 10 MB, not 42 MB. If it shows 42 MB, compression is not on — go back to 3.1.
@@ -223,7 +229,7 @@ In the Network tab, `index.side.wasm` should show a transfer size of about
 | Loads, but very slowly the first time | Compression is off. Section 3.1. |
 | `SQLite` errors, or every pack fails with "Could not read the language database" | Built without `Extensions Support`. Section 1. |
 | Console mentions `SharedArrayBuffer` or cross-origin isolation | Built with `Thread Support` on. Section 5. |
-| Page loads but "Choose a .zip file…" does nothing | The browser blocked the file dialog. Testers can drag the .zip onto the page instead — that always works. |
+| Page loads but "Choose a .zip file…" does nothing | The browser blocked the file dialog. Testers can drag the .zip onto the page instead. |
 | Testers see an old version after you upload | `index.html` was cached. Section 4. |
 
 ---
