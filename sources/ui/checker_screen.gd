@@ -10,6 +10,11 @@ const MUTED_COLOR: Color = Color("8d99ae")
 const ACCENT_COLOR: Color = Color("8ecae6")
 const PROBLEM_COLOR: Color = Color("ffd166")
 
+## Redrawing the word list costs upwards of 100 ms — it is 2500 rows — so the
+## search box waits for a pause in typing instead of redrawing on every letter.
+## The other filters are single clicks and apply straight away.
+const SEARCH_SETTLE_SECONDS: float = 0.25
+
 var _archive: PackArchive = null
 var _store: ReportStore = null
 var _lists: Array[CheckList] = []
@@ -24,6 +29,7 @@ var _only_missing: CheckBox = null
 var _finish_button: Button = null
 var _sound_queue: SoundQueue = null
 var _now_playing: Label = null
+var _search_settle: Timer = null
 
 
 func _ready() -> void:
@@ -131,11 +137,18 @@ func _build_filters() -> Control:
 	var row: HBoxContainer = HBoxContainer.new()
 	row.add_theme_constant_override("separation", 12)
 
+	_search_settle = Timer.new()
+	_search_settle.one_shot = true
+	_search_settle.wait_time = SEARCH_SETTLE_SECONDS
+	_search_settle.timeout.connect(_apply_filters)
+	add_child(_search_settle)
+
 	_search = LineEdit.new()
 	_search.placeholder_text = "Search…"
 	_search.clear_button_enabled = true
 	_search.custom_minimum_size.x = 240
-	_search.text_changed.connect(func (_text: String) -> void: _apply_filters())
+	_search.text_changed.connect(func (_text: String) -> void: _search_settle.start())
+	_search.text_submitted.connect(func (_text: String) -> void: _apply_filters())
 	row.add_child(_search)
 
 	var lesson_label: Label = Label.new()
@@ -208,6 +221,9 @@ func _current_list() -> CheckList:
 
 
 func _apply_filters() -> void:
+	# Anything that applies now makes a pending redraw from typing redundant.
+	if _search_settle:
+		_search_settle.stop()
 	var list: CheckList = _current_list()
 	if list == null:
 		return

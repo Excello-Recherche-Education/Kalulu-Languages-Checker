@@ -111,9 +111,8 @@ func _ready() -> void:
 func set_busy(busy: bool, message: String = "") -> void:
 	_browse_button.disabled = busy
 	_resume_button.disabled = busy
-	if not message.is_empty():
-		_status.remove_theme_color_override("font_color")
-		_status.text = message
+	_status.remove_theme_color_override("font_color")
+	_status.text = message
 
 
 func show_error(message: String) -> void:
@@ -135,6 +134,7 @@ func _offer_cached_archive() -> void:
 
 func _on_packs_listed(packs: Array[Dictionary]) -> void:
 	for child: Node in _packs_container.get_children():
+		_packs_container.remove_child(child)
 		child.queue_free()
 
 	for pack: Dictionary in packs:

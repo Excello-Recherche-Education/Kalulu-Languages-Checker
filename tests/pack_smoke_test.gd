@@ -67,12 +67,28 @@ func _check_archive(archive_path: String) -> void:
 				% [category, category_entries.size(), playable, missing, lessons])
 		_expect(not category_entries.is_empty(), "%s is not empty" % category)
 
+	_report_database_oddities(data)
 	_check_decodes_audio(archive, entries)
 	_check_report_csv(archive, entries, store)
 
 	data.close()
 	archive.close()
 	_expect(not archive.is_open(), "archive closes")
+
+
+## The checker hides blank and repeated entries from the tester, because there
+## is nothing to listen to and nothing to say about them. They are still a fault
+## in the pack, so they are named here rather than disappearing quietly.
+func _report_database_oddities(data: LanguageData) -> void:
+	for category: String in data.skipped:
+		var detail: Dictionary = data.skipped[category]
+		var repeated: PackedStringArray = detail.repeated
+		var parts: PackedStringArray = PackedStringArray()
+		if int(detail.blank) > 0:
+			parts.append("%d blank" % detail.blank)
+		if not repeated.is_empty():
+			parts.append("%d repeated (%s)" % [repeated.size(), ", ".join(repeated)])
+		print("  note  %s: %s — hidden from the tester" % [category, ", ".join(parts)])
 
 
 ## Every playable entry claims a recording; make sure one really decodes, so a

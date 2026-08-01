@@ -19,6 +19,12 @@ const CATEGORIES: Array[String] = [
 	CATEGORY_SENTENCE,
 ]
 
+## What read_all() left out, per category: {"blank": int, "repeated": [text…]}.
+## Nothing in the interface shows this — a tester has nothing to say about a
+## blank or repeated entry — but it is a real fault in a pack, so it is kept
+## where the team's checks can print it.
+var skipped: Dictionary[String, Dictionary] = {}
+
 var _db: SQLite = null
 var _archive: PackArchive = null
 
@@ -57,14 +63,43 @@ func read_all() -> Dictionary[String, Array]:
 			"GPsInSyllables", "SyllableID", gp_lessons)
 	var sentence_words: Dictionary[int, Array] = _read_sentence_words()
 
+	skipped.clear()
 	var result: Dictionary[String, Array] = {}
-	result[CATEGORY_GP] = _build_gps(gp_lessons)
-	result[CATEGORY_SYLLABLE] = _build_texts(
-			CATEGORY_SYLLABLE, "Syllables", "Syllable", syllable_lessons)
-	result[CATEGORY_WORD] = _build_texts(
-			CATEGORY_WORD, "Words", "Word", word_lessons)
-	result[CATEGORY_SENTENCE] = _build_sentences(
-			sentence_words, word_texts, word_lessons)
+	result[CATEGORY_GP] = _reviewable(CATEGORY_GP, _build_gps(gp_lessons))
+	result[CATEGORY_SYLLABLE] = _reviewable(CATEGORY_SYLLABLE, _build_texts(
+			CATEGORY_SYLLABLE, "Syllables", "Syllable", syllable_lessons))
+	result[CATEGORY_WORD] = _reviewable(CATEGORY_WORD, _build_texts(
+			CATEGORY_WORD, "Words", "Word", word_lessons))
+	result[CATEGORY_SENTENCE] = _reviewable(CATEGORY_SENTENCE, _build_sentences(
+			sentence_words, word_texts, word_lessons))
+	return result
+
+
+## Drops what a tester cannot act on: entries with no text, and repeats of a
+## text already in the list. Every pack but pt_BR carries the same sentence
+## twice, and the Spanish packs carry one empty sentence.
+##
+## Dropping repeats also keeps one row per report. A report is filed against the
+## text, so two rows sharing a text would share one report, and ticking one
+## would leave the other looking untouched.
+func _reviewable(category: String, entries: Array[Checkable]) -> Array[Checkable]:
+	var seen: Dictionary[String, bool] = {}
+	var result: Array[Checkable] = []
+	var blank: int = 0
+	var repeated: PackedStringArray = PackedStringArray()
+
+	for entry: Checkable in entries:
+		if entry.text.strip_edges().is_empty():
+			blank += 1
+			continue
+		if seen.has(entry.text):
+			repeated.append(entry.text)
+			continue
+		seen[entry.text] = true
+		result.append(entry)
+
+	if blank > 0 or not repeated.is_empty():
+		skipped[category] = {"blank": blank, "repeated": repeated}
 	return result
 
 

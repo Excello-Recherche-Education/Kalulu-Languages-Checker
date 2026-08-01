@@ -32,9 +32,11 @@ var _entries: Array[Checkable] = []
 var _store: ReportStore = null
 var _tree: Tree = null
 var _play_icon: Texture2D = null
-## Row index in the Tree -> index in `_entries`. Filtering makes these differ.
-var _row_entries: Array[Checkable] = []
 var _summary: Label = null
+## Rows currently in the Tree, which is fewer than `_entries` when filtering.
+var _shown_count: int = 0
+## Entries the pack has no recording for. Fixed once the pack is open.
+var _missing_sound_count: int = 0
 
 # Active filters.
 var _search: String = ""
@@ -97,6 +99,10 @@ func setup(p_category: String, entries: Array[Checkable], store: ReportStore) ->
 	_entries = entries
 	_store = store
 	name = p_category
+	_missing_sound_count = 0
+	for entry: Checkable in _entries:
+		if entry.has_missing_sound():
+			_missing_sound_count += 1
 	if is_node_ready():
 		rebuild()
 
@@ -130,18 +136,15 @@ func rebuild() -> void:
 		return
 
 	_tree.clear()
-	_row_entries.clear()
+	_shown_count = 0
 	var root: TreeItem = _tree.create_item()
 
-	var missing_sounds: int = 0
 	for entry: Checkable in _entries:
-		if entry.has_missing_sound():
-			missing_sounds += 1
 		if not _passes_filters(entry):
 			continue
 		_add_row(root, entry)
 
-	_update_summary(missing_sounds)
+	_update_summary()
 
 
 func _passes_filters(entry: Checkable) -> bool:
@@ -158,7 +161,7 @@ func _passes_filters(entry: Checkable) -> bool:
 
 func _add_row(root: TreeItem, entry: Checkable) -> void:
 	var item: TreeItem = _tree.create_item(root)
-	_row_entries.append(entry)
+	_shown_count += 1
 	item.set_metadata(COLUMN_TEXT, entry)
 
 	item.set_text(COLUMN_LESSON, str(entry.lesson) if entry.lesson > 0 else "—")
@@ -218,19 +221,18 @@ func _apply_row_colour(item: TreeItem, entry: Checkable) -> void:
 		item.clear_custom_color(COLUMN_TEXT)
 
 
-func _update_summary(missing_sounds: int) -> void:
-	var shown: int = _row_entries.size()
+func _update_summary() -> void:
 	var total: int = _entries.size()
 	var parts: PackedStringArray = PackedStringArray()
-	if shown == total:
+	if _shown_count == total:
 		parts.append("%d entries" % total)
 	else:
-		parts.append("showing %d of %d entries" % [shown, total])
+		parts.append("showing %d of %d entries" % [_shown_count, total])
 	var reported: int = _store.count_in(category)
 	if reported > 0:
 		parts.append("%d reported" % reported)
-	if missing_sounds > 0:
-		parts.append("%d with a missing recording" % missing_sounds)
+	if _missing_sound_count > 0:
+		parts.append("%d with a missing recording" % _missing_sound_count)
 	_summary.text = "  ·  ".join(parts)
 
 
@@ -282,13 +284,5 @@ func _on_item_edited() -> void:
 			return
 
 	_apply_row_colour(item, entry)
-	_update_summary(_count_missing_sounds())
+	_update_summary()
 	report_changed.emit()
-
-
-func _count_missing_sounds() -> int:
-	var count: int = 0
-	for entry: Checkable in _entries:
-		if entry.has_missing_sound():
-			count += 1
-	return count

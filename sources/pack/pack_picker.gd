@@ -90,9 +90,16 @@ const _JS_PICKER: String = """
 
 var _is_web: bool = OS.has_feature("web")
 var _picker: JavaScriptObject = null
-## Control the transparent browser input is parked on, while it is visible.
-var _anchor: Control = null
+## Button the transparent browser input is parked on, while it is visible.
+var _anchor: Button = null
 var _file_dialog: FileDialog = null
+## Where the browser input was last put, to avoid repeating the same call.
+## Starts at a rectangle no layout can produce, so the first frame always
+## places it: the JavaScript side outlives this node and may hold an old
+## position from a previous screen.
+var _placement: Rect2 = Rect2(-1.0, -1.0, -1.0, -1.0)
+var _scale: float = 1.0
+var _scale_window_size: Vector2i = Vector2i.ZERO
 
 # State of a read in progress.
 var _destination: FileAccess = null
@@ -113,7 +120,7 @@ func _ready() -> void:
 
 ## Makes the browse button live. On the web the transparent input is parked on
 ## `anchor` and follows it; on desktop `anchor` is unused.
-func set_browse_anchor(anchor: Control) -> void:
+func set_browse_anchor(anchor: Button) -> void:
 	_anchor = anchor
 	set_process(_is_web and _picker != null and _anchor != null)
 	if _is_web and _picker == null and _anchor != null:
@@ -166,27 +173,35 @@ func _process(_delta: float) -> void:
 
 ## Keeps the transparent browser input exactly on top of the Godot button.
 func _follow_anchor() -> void:
-	if _anchor == null or not _anchor.is_visible_in_tree():
-		_picker.place(0, 0, 0, 0)
-		return
+	var placement: Rect2 = Rect2()
+	if _anchor and _anchor.is_visible_in_tree():
+		# Control coordinates are viewport coordinates; the screen transform
+		# folds in the stretch applied to the viewport, giving window pixels.
+		var rect: Rect2 = get_viewport().get_screen_transform() * _anchor.get_global_rect()
+		placement = Rect2(rect.position * _css_pixels_per_window_pixel(),
+				rect.size * _css_pixels_per_window_pixel())
 
-	# Control coordinates are viewport coordinates; the screen transform folds
-	# in the stretch applied to the viewport, giving window pixels.
-	var rect: Rect2 = get_viewport().get_screen_transform() * _anchor.get_global_rect()
-	var scale: float = _css_pixels_per_window_pixel()
-	_picker.place(
-			rect.position.x * scale,
-			rect.position.y * scale,
-			rect.size.x * scale,
-			rect.size.y * scale)
+	# Crossing into JavaScript is not free, and this runs every frame.
+	if placement.is_equal_approx(_placement):
+		return
+	_placement = placement
+	_picker.place(placement.position.x, placement.position.y,
+			placement.size.x, placement.size.y)
 
 
 ## The canvas is laid out in CSS pixels but drawn in device pixels, so the two
-## coordinate systems differ by the device pixel ratio.
+## coordinate systems differ by the device pixel ratio. Only recomputed when the
+## window changes size: evaluating JavaScript 60 times a second to read a number
+## that almost never moves is pure waste.
 func _css_pixels_per_window_pixel() -> float:
-	var window_width: float = float(DisplayServer.window_get_size().x)
-	if window_width <= 0.0:
-		return 1.0
+	var window_size: Vector2i = DisplayServer.window_get_size()
+	if window_size == _scale_window_size:
+		return _scale
+	_scale_window_size = window_size
+	_scale = 1.0
+
+	if window_size.x <= 0:
+		return _scale
 	var canvas_width: float = float(JavaScriptBridge.eval("""
 		(function () {
 			var canvas = document.getElementById('canvas')
@@ -194,9 +209,9 @@ func _css_pixels_per_window_pixel() -> float:
 			return canvas ? canvas.getBoundingClientRect().width : 0;
 		})();
 	""", true))
-	if canvas_width <= 0.0:
-		return 1.0
-	return canvas_width / window_width
+	if canvas_width > 0.0:
+		_scale = canvas_width / float(window_size.x)
+	return _scale
 
 
 func _poll_browser() -> void:
@@ -231,7 +246,10 @@ func _begin_browser_read() -> void:
 	if not DirAccess.dir_exists_absolute(ARCHIVE_DIRECTORY):
 		DirAccess.make_dir_recursive_absolute(ARCHIVE_DIRECTORY)
 
-	_destination_path = ARCHIVE_DIRECTORY.path_join(file_name)
+	# The name comes from the tester's computer, so it is not trusted to be a
+	# well-behaved path component.
+	_destination_path = ARCHIVE_DIRECTORY.path_join(
+			PackArchive.sanitize_file_name(file_name.get_file()))
 	_destination = FileAccess.open(_destination_path, FileAccess.WRITE)
 	if _destination == null:
 		_picker.reset()
@@ -253,16 +271,37 @@ func _consume_browser_chunk() -> void:
 
 	var bytes: PackedByteArray = JavaScriptBridge.js_buffer_to_packed_byte_array(chunk)
 	_destination.store_buffer(bytes)
+	# A pack is up to 90 MB and the browser gives this storage grudgingly, so a
+	# write can fail part way through. Saying so beats handing back a truncated
+	# archive that fails later as "this is not a .zip".
+	var write_error: Error = _destination.get_error()
+	if write_error != OK and write_error != ERR_FILE_EOF:
+		_picker.reset()
+		_abort_read()
+		_fail("This browser ran out of room while storing the pack (%s). "
+				% error_string(write_error)
+				+ "Free some space for this site, or try a different browser.")
+		return
+
 	_read_bytes += bytes.size()
 	progress.emit(mini(_read_bytes, _total_bytes), _total_bytes)
 
-	if bytes.is_empty() or _read_bytes >= _total_bytes:
+	if _read_bytes >= _total_bytes:
 		_destination.close()
 		_destination = null
 		_picker.reset()
 		# Persist to IndexedDB so the pack survives a reload of the page.
 		JavaScriptBridge.force_fs_sync()
 		picked.emit(_destination_path)
+		return
+
+	if bytes.is_empty():
+		# The file ended earlier than its own reported size.
+		_picker.reset()
+		_abort_read()
+		_fail("Only part of that file could be read (%d of %d bytes). "
+				% [_read_bytes, _total_bytes]
+				+ "Download the pack again and retry.")
 		return
 
 	_picker.read(_read_bytes, CHUNK_SIZE)

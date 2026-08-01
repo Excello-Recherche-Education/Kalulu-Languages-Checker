@@ -111,9 +111,10 @@ func _on_finish_requested() -> void:
 func _on_load_another_requested() -> void:
 	_close_pack()
 	PackPicker.clear_cached_archives()
-	_show_only(_load_screen)
-	# The load screen caches what it found on startup; rebuild it so the pack
-	# just discarded is no longer offered.
+	# The load screen decides what to offer when it is built, so it is built
+	# again: the pack just discarded must no longer be offered as "continue
+	# with", and the tester should land on a clean screen.
+	remove_child(_load_screen)
 	_load_screen.queue_free()
 	_load_screen = LoadScreen.new()
 	_load_screen.archive_chosen.connect(_on_archive_chosen)

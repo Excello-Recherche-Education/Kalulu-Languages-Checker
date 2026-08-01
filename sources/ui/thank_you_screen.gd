@@ -154,14 +154,10 @@ func _on_mail_pressed() -> void:
 		body += " (version %s)" % _store.pack_version
 	body += ".\nThe CSV file is attached.\n\nThank you,\n"
 
+	# mailto: carries the subject and body as query values, so both have to be
+	# percent-encoded — the body has newlines in it.
 	OS.shell_open("mailto:%s?subject=%s&body=%s" % [
 		CONTACT_EMAIL,
-		_percent_encode("%s — %s" % [EMAIL_SUBJECT, _store.locale]),
-		_percent_encode(body),
+		("%s — %s" % [EMAIL_SUBJECT, _store.locale]).uri_encode(),
+		body.uri_encode(),
 	])
-
-
-## mailto: needs its query values percent-encoded; uri_encode leaves the few
-## characters that matter here alone.
-func _percent_encode(text: String) -> String:
-	return text.uri_encode()

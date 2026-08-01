@@ -6,7 +6,6 @@ extends AudioStreamPlayer
 ## sentence has none of its own, so the game reads it word by word and this
 ## plays those word recordings back to back.
 
-signal queue_started
 signal queue_finished
 
 var _archive: PackArchive = null
@@ -24,7 +23,6 @@ func play_sounds(archive: PackArchive, sound_names: PackedStringArray) -> void:
 		return
 	_archive = archive
 	_pending.assign(sound_names)
-	queue_started.emit()
 	_play_next()
 
 
@@ -32,10 +30,6 @@ func stop_all() -> void:
 	_pending.clear()
 	if playing:
 		stop()
-
-
-func is_busy() -> bool:
-	return playing or not _pending.is_empty()
 
 
 func _play_next() -> void:
