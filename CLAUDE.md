@@ -20,6 +20,12 @@ behind the design. This file covers only what is easy to get wrong.
 
 ## Things that will bite you
 
+- **Testers always get the latest Kalulu-Languages release**, resolved at page
+  load from `/releases/latest`. The team's rule is that the latest release is
+  always the one to review, so this is deliberate — but GitHub's "latest"
+  excludes prereleases and drafts. A pack published as a prerelease will not
+  reach testers, and they will be offered the previous release with nothing to
+  say so. Do not use prereleases for pack distribution.
 - **`language.db` is the source of truth, never the CSV exports** next to it in
   the pack. Released packs exist with empty `words_list.csv` and
   `syllables_list.csv` (`es_CO` is missing 1622 words and 240 syllables from its

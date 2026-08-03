@@ -16,9 +16,13 @@ project by [Excello Recherche & Éducation](https://github.com/Excello-Recherche
 
 ## What a tester does
 
-1. **Get a pack.** The first screen lists the packs published in
-   [Kalulu-Languages releases](https://github.com/Excello-Recherche-Education/Kalulu-Languages/releases)
-   with their sizes, and a download button for each.
+1. **Get a pack.** The first screen lists the packs in the **latest**
+   [Kalulu-Languages release](https://github.com/Excello-Recherche-Education/Kalulu-Languages/releases)
+   with their real sizes, and a download button for each. The list is read from
+   GitHub when the page loads, so publishing a release is all it takes to put
+   new packs in front of testers — nothing here needs rebuilding, and adding a
+   locale needs no code change. Note that GitHub's "latest" skips prereleases,
+   so pack releases must not be marked as such.
 2. **Open it.** Use the file button, or drag the `.zip` onto the page. The pack
    is read locally; it never leaves the machine.
 3. **Check it.** Four tabs — **GP**, **Syllables**, **Words**, **Sentences** —

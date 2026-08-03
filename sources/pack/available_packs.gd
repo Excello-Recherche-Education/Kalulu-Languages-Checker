@@ -8,6 +8,19 @@ extends Node
 ## works from a browser. If it fails — offline, rate limited, repository moved —
 ## the known locales are shown instead and the tester can still reach the
 ## releases page by hand.
+##
+## Whatever is the latest release is what testers get, so it has to be the one
+## they should be reviewing. Two things follow from GitHub's definition of
+## "latest", which excludes prereleases and drafts:
+##
+## - Marking a pack release as a prerelease does not put it in front of testers.
+##   They keep being offered the previous release, with nothing to indicate it.
+## - If every release is a prerelease the endpoint answers 404, and the tester
+##   sees the fallback list of locales pointing at the releases page.
+##
+## The address is resolved when the page loads, not when the button is pressed,
+## so a tester who already has the page open keeps the release they arrived with
+## until they reload.
 
 signal listed(packs: Array[Dictionary])
 
