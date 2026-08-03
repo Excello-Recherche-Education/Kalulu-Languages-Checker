@@ -182,3 +182,17 @@ Remember to delete `build/web/testpack.zip` afterwards so it is not published.
 
 The checker reads packs straight from the GitHub releases, so it needs no
 backend and no API access of its own.
+
+---
+
+## License
+
+Copyright (c) 2026 Excello. Licensed under
+[Creative Commons Attribution-ShareAlike 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/)
+(CC BY-SA 4.0) — see [LICENSE](LICENSE). Same license as the rest of the Kalulu
+project.
+
+One exception: `addons/godot-sqlite/` is not ours. It is
+[godot-sqlite](https://github.com/2shady4u/godot-sqlite) by Piet Bronders &
+Jeroen De Geeter, vendored here under its own MIT license — see
+[addons/godot-sqlite/LICENSE.md](addons/godot-sqlite/LICENSE.md).
