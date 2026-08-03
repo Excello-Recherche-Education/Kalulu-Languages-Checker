@@ -15,12 +15,16 @@ var _title: Label = null
 var _body: Label = null
 var _delivery_note: Label = null
 var _download_button: Button = null
+var _reveal_button: Button = null
 var _mail_button: Button = null
 var _back_button: Button = null
 
 var _store: ReportStore = null
 var _csv: PackedByteArray = PackedByteArray()
 var _file_name: String = ""
+## Where the report was written, on the platforms that write it to a folder.
+## Empty in a browser, where the file goes wherever downloads go.
+var _saved_path: String = ""
 
 
 func _ready() -> void:
@@ -68,10 +72,21 @@ func _ready() -> void:
 	column.add_child(buttons)
 
 	_download_button = Button.new()
-	_download_button.text = "Download the report again"
+	# In a browser the file is downloaded; everywhere else it is written to a
+	# folder, and calling that "downloading" would send the tester looking in
+	# the wrong place.
+	_download_button.text = "Download the report again" if OS.has_feature("web") \
+			else "Save the report again"
 	_download_button.custom_minimum_size = Vector2(240, 48)
 	_download_button.pressed.connect(_deliver_csv)
 	buttons.add_child(_download_button)
+
+	_reveal_button = Button.new()
+	_reveal_button.text = "Show me the file"
+	_reveal_button.custom_minimum_size = Vector2(180, 48)
+	_reveal_button.visible = false
+	_reveal_button.pressed.connect(_on_reveal_pressed)
+	buttons.add_child(_reveal_button)
 
 	_mail_button = Button.new()
 	_mail_button.text = "Write the email"
@@ -95,7 +110,8 @@ func _ready() -> void:
 	secondary.add_child(another)
 
 	var note: Label = Label.new()
-	note.text = "The report stays saved in this browser, so you can come back to it later."
+	note.text = "The report stays saved %s, so you can come back to it later." % (
+			"in this browser" if OS.has_feature("web") else "on this computer")
 	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	note.add_theme_color_override("font_color", MUTED_COLOR)
 	column.add_child(note)
@@ -116,6 +132,7 @@ func present(store: ReportStore) -> void:
 		_body.text = "You did not report any problem, so there is nothing to send. "
 		_body.text += "If that is a mistake, go back and tick the entries that are wrong."
 		_download_button.visible = false
+		_reveal_button.visible = false
 		_mail_button.visible = false
 		_delivery_note.text = ""
 		return
@@ -140,12 +157,25 @@ func _deliver_csv() -> void:
 	var path: String = "user://%s" % _file_name
 	var file: FileAccess = FileAccess.open(path, FileAccess.WRITE)
 	if file == null:
+		_saved_path = ""
+		_reveal_button.visible = false
 		_delivery_note.text = "Could not write the report (%s)." % error_string(
 				FileAccess.get_open_error())
 		return
 	file.store_buffer(_csv)
 	file.close()
-	_delivery_note.text = "Saved to %s" % ProjectSettings.globalize_path(path)
+
+	_saved_path = ProjectSettings.globalize_path(path)
+	_reveal_button.visible = true
+	_delivery_note.text = "Saved to %s" % _saved_path
+
+
+## Opens the folder the report was written to, with the file itself picked out,
+## so the tester does not have to go hunting for that path by hand.
+func _on_reveal_pressed() -> void:
+	if _saved_path.is_empty():
+		return
+	OS.shell_show_in_file_manager(_saved_path, true)
 
 
 func _on_mail_pressed() -> void:
