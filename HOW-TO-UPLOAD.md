@@ -112,9 +112,34 @@ Three things about it are not obvious and cost time if you do not know them:
 - **The path is `/opt/bitnami/apache`, not `apache2`.** There is an
   `apache2_backup` directory left over from an upgrade; ignore it.
 - **Multisite means one shared document root.** There is no per-subdomain
-  folder. `/lang-tester` therefore answers on every domain in the network, not
-  just `kalulu.`. Harmless for an unlisted tool, but do not go looking for a
-  `kalulu`-specific directory — there isn't one.
+  folder, so do not go looking for a `kalulu`-specific directory — there isn't
+  one. Left alone, `/lang-tester` would therefore answer on *every* domain
+  pointed at the instance, and on the bare IP address. One line in the config
+  restricts it to the intended hostname:
+
+  ```apache
+  Require expr "tolower(%{HTTP_HOST}) == 'kalulu.excellolab.org'"
+  ```
+
+  That is authorization rather than URL rewriting, which matters: it leaves the
+  `RewriteEngine Off` above it alone, and that line is what stops WordPress from
+  swallowing the folder. `tolower()` is there because the `Host` header is
+  client-supplied and its case is not guaranteed. If the site ever moves to a
+  non-standard port, the port appears in `Host` and the comparison needs
+  adjusting. To allow several hostnames, use
+  `Require expr "tolower(%{HTTP_HOST}) in {'a', 'b'}"`.
+
+  Note what this does *not* do: it restricts which hostname serves the tool, not
+  who may use it. The URL stays open to anyone holding it, and unlisted URLs
+  circulate. If you need "our testers only", that is HTTP Basic auth, combined
+  with the host check like this:
+
+  ```apache
+  <RequireAll>
+      Require valid-user
+      Require expr "tolower(%{HTTP_HOST}) == 'kalulu.excellolab.org'"
+  </RequireAll>
+  ```
 
 There is also **no WordPress page and no iframe**. The URL is unlisted and sent
 directly to testers, so an iframe would add nothing while making the file picker
@@ -204,6 +229,15 @@ curl -s -o /dev/null -w "wasm:  %{http_code}  %{content_type}  encoding=%{conten
 
 The transferred byte count is the honest test of compression: a response header
 can be misleading, 10 MB instead of 44 MB cannot.
+
+Then check the hostname restriction, which means confirming it *fails* where it
+should — add any other domains mapped to the instance to the list:
+
+```bash
+for h in kalulu.excellolab.org excellolab.org www.excellolab.org; do printf "%-24s " "$h"; curl -s -o /dev/null -w "%{http_code}\n" "https://$h/lang-tester/"; done; printf "%-24s " "bare IP"; curl -sk -o /dev/null -w "%{http_code}\n" "https://15.236.191.115/lang-tester/"
+```
+
+`200` for `kalulu.excellolab.org`, `403` for everything else.
 
 Then open the page and confirm, in order:
 
@@ -298,6 +332,7 @@ invalidate the CloudFront path.
 | Every pack fails with "Could not read the language database" | Built without `Extensions Support`. Section 1 |
 | Console mentions `SharedArrayBuffer` or cross-origin isolation | Built with `Thread Support` on. Section 6 |
 | WordPress 404 page instead of the tool | WordPress's rewrite rules claimed the path. The `RewriteEngine Off` block in `deploy/lang-tester.conf` is what prevents this |
+| `403 Forbidden` on the intended URL too | The hostname does not match the `Require expr` line — a renamed subdomain, an added `www.`, or a non-standard port. Section 4 |
 | "Choose a .zip file…" does nothing | The browser blocked the file dialog. Testers can drag the .zip onto the page instead |
 | Testers see an old version after you upload | `index.html` was cached. Section 4.4 sets `no-cache` on it |
 
