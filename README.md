@@ -59,12 +59,17 @@ being downloaded.
 
 ### Building for the web
 
-See **[HOW-TO-UPLOAD.md](HOW-TO-UPLOAD.md)** — it covers the build command, what
-to upload, the two server settings that matter, and how to verify the result.
+It is live at **https://kalulu.excellolab.org/lang-tester/**.
 
 ```bash
-godot --headless --path . --export-release "Web" build/web/index.html
+godot --headless --path . --export-release "Web" build/lang-tester/index.html
 ```
+
+See **[HOW-TO-UPLOAD.md](HOW-TO-UPLOAD.md)** for the rest: what to upload, the
+two server settings that matter, the exact procedure for our Lightsail instance,
+and how to verify the result. Read it before deploying — the server it runs on
+ignores `.htaccess` files, which is not the sort of thing you want to discover
+by trial and error.
 
 ---
 
@@ -96,7 +101,7 @@ media the checker does not use. Handling that in a browser shapes the design:
   word, so the checker plays the word recordings in order and says how many
   there are.
 - **No threads.** Not needing them keeps the build out of cross-origin isolated
-  mode, which is what makes it hostable anywhere. See HOW-TO-UPLOAD.md §5.
+  mode, which is what makes it hostable anywhere. See HOW-TO-UPLOAD.md §6.
 - **The file button is an HTML input in disguise.** Browsers only open a file
   dialog from inside a real click on a real element, and by the time Godot
   reports a button press the browser is no longer in that click. So a
@@ -147,7 +152,13 @@ way to see what a pack is missing:
 GP          118 entries     92 playable     26 missing recording
 Syllable    223 entries    223 playable      0 missing recording
 Word       2503 entries   2410 playable     93 missing recording
-Sentence    254 entries    253 playable     67 missing recording
+Sentence    252 entries    252 playable     67 missing recording
+```
+
+and names anything it hid from the tester, so a fault in a pack is still visible:
+
+```
+note  Sentence: 2 repeated (il a gagné un trophée au tennis, …) — hidden from the tester
 ```
 
 **The interface**, saving a picture of each screen so layout can be reviewed
@@ -162,8 +173,8 @@ input, waits for SQLite to open it on the browser filesystem, reports a problem,
 and checks the CSV that comes out:
 
 ```bash
-(cd build/web && python3 -m http.server 8099) &
-cp ~/packs/fr_FR.zip build/web/testpack.zip
+(cd build/lang-tester && python3 -m http.server 8099) &
+cp ~/packs/fr_FR.zip build/lang-tester/testpack.zip
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
   --headless=new --remote-debugging-port=9222 --window-size=1280,800 \
   --user-data-dir=/tmp/kalulu_chrome --enable-unsafe-swiftshader \
@@ -172,7 +183,7 @@ node tests/web_e2e.mjs http://localhost:8099/index.html \
   http://localhost:8099/testpack.zip /tmp/kalulu_dl /tmp/kalulu_shots
 ```
 
-Remember to delete `build/web/testpack.zip` afterwards so it is not published.
+Remember to delete `build/lang-tester/testpack.zip` afterwards so it is never published.
 
 ---
 
