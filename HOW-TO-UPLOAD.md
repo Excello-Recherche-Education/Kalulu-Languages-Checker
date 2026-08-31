@@ -207,8 +207,27 @@ To back the whole thing out: delete
 ### 4.5 Updating an existing deployment
 
 Rebuild, rezip, scp, then repeat 4.3 only. The configuration does not change, so
-Apache does not need restarting. `index.html` is served with `no-cache`, so
+Apache does not need restarting. Every file is served with `no-cache`, so
 testers pick up the new build on their next visit.
+
+**Why not just `no-cache` on `index.html`.** That is what this file used to say,
+and it was wrong. Godot's export emits fixed names — `index.pck`, `index.js`,
+`index.wasm`, `index.side.wasm` — with no content hash and no version query, so
+`index.html` is only a bootstrapper and the application itself is `index.pck`.
+While the engine files carried `max-age=604800`, a returning tester kept running
+whichever build they had first loaded, and *every visit re-armed that week*, so
+the most diligent testers were the last to see a deployment. One tester was
+still being told to fetch packs from GitHub by hand three weeks after that
+screen had been replaced.
+
+`no-cache` does not mean "do not store", it means "revalidate before use", so
+this costs one conditional request per file and Apache answers an unchanged one
+with a 304 of zero bytes — the 44 MB engine is re-sent only when it really
+changed. Making that true needed a second line in the config: mod_deflate
+appends `-gzip` to the ETag of anything it compresses and then fails to match it
+back, so without `RequestHeader edit "If-None-Match"` every revalidation
+answered `200` with all 10.5 MB. Both lines are in
+[deploy/lang-tester.conf](deploy/lang-tester.conf); do not drop either.
 
 ---
 
@@ -229,6 +248,25 @@ curl -s -o /dev/null -w "wasm:  %{http_code}  %{content_type}  encoding=%{conten
 
 The transferred byte count is the honest test of compression: a response header
 can be misleading, 10 MB instead of 44 MB cannot.
+
+Then check what a **returning** tester gets, which is the case a fresh browser
+profile silently hides — and the one that shipped a three-week-old build to a
+tester once already:
+
+```bash
+for f in index.html index.pck index.js index.side.wasm; do
+  u="https://kalulu.excellolab.org/lang-tester/$f"
+  e=$(curl -sI -H 'Accept-Encoding: gzip' "$u" | grep -i etag | tr -d '\r' | sed 's/.*: //')
+  printf "%-16s unchanged -> " "$f"
+  curl -s -o /dev/null -w "%{http_code} %{size_download}b   " -H 'Accept-Encoding: gzip' -H "If-None-Match: $e" "$u"
+  printf "changed -> "
+  curl -s -o /dev/null -w "%{http_code} %{size_download}b\n" -H 'If-None-Match: "stale-validator"' "$u"
+done
+```
+
+Expect `304 0b` for unchanged and `200 <full size>b` for changed, on every line.
+`200` in the unchanged column means repeat visits re-download the whole engine;
+`304` in the changed column would mean a deployment can never reach anybody.
 
 Then check the hostname restriction, which means confirming it *fails* where it
 should — add any other domains mapped to the instance to the list:
@@ -334,7 +372,8 @@ invalidate the CloudFront path.
 | WordPress 404 page instead of the tool | WordPress's rewrite rules claimed the path. The `RewriteEngine Off` block in `deploy/lang-tester.conf` is what prevents this |
 | `403 Forbidden` on the intended URL too | The hostname does not match the `Require expr` line — a renamed subdomain, an added `www.`, or a non-standard port. Section 4 |
 | "Choose a .zip file…" does nothing | The browser blocked the file dialog. Testers can drag the .zip onto the page instead |
-| Testers see an old version after you upload | `index.html` was cached. Section 4.4 sets `no-cache` on it |
+| Testers see an old version after you upload | `index.pck` was cached — that file *is* the application, and its name never changes between builds. Section 4.5. A fresh browser profile will not reproduce this, so test with the browser that saw the old build |
+| The first load is fast but every *repeat* visit re-downloads 10.5 MB | The `RequestHeader edit "If-None-Match"` line is missing, so gzipped revalidation answers `200` instead of `304`. Section 4.5 |
 
 ---
 
