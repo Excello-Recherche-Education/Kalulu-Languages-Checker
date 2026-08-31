@@ -1,24 +1,41 @@
 class_name LoadScreen
 extends MarginContainer
-## First screen: tells the tester where to get a pack, then takes the file they
-## downloaded.
+## First screen: the tester picks a language and the pack arrives by itself.
+##
+## Downloading is one press. The pack is fetched into the browser's own storage
+## and stays there, so coming back later — or reloading the page — opens it
+## again without another 90 MB. When the copy on this computer is older than the
+## published one, the same button offers the update instead.
+##
+## Opening a .zip by hand still works and is kept below, because it is the only
+## way in when the storage cannot be reached, and the only way to look at a pack
+## that has not been published yet.
 
 signal archive_chosen(archive_path: String)
 
 const TITLE: String = "Kalulu — Language Pack Checker"
 const SUBTITLE: String = "Help us find mistakes in the reading content: wrong recordings, misspelled words, sounds that do not match the text."
+const CONTACT_EMAIL: String = "contact@excellolab.org"
 
 const MUTED_COLOR: Color = Color("8d99ae")
 const ERROR_COLOR: Color = Color("ef767a")
 const ACCENT_COLOR: Color = Color("8ecae6")
+const READY_COLOR: Color = Color("95d5b2")
 
 var _packs_container: VBoxContainer = null
 var _browse_button: Button = null
-var _resume_button: Button = null
 var _progress: ProgressBar = null
 var _status: Label = null
 var _picker: PackPicker = null
 var _available: AvailablePacks = null
+var _downloader: PackDownloader = null
+
+var _packs: Array[Dictionary] = []
+## What is stored on this computer, re-read whenever it may have changed.
+var _installed: Dictionary = {}
+## Every per-pack action button, so they can all be disabled while one is busy.
+var _action_buttons: Array[Button] = []
+var _busy: bool = false
 
 
 func _ready() -> void:
@@ -40,48 +57,15 @@ func _ready() -> void:
 	column.add_child(_paragraph(SUBTITLE))
 	column.add_child(HSeparator.new())
 
-	column.add_child(_heading("Step 1 — Download a language pack", 20, ACCENT_COLOR))
+	column.add_child(_heading("Choose a language to check", 20, ACCENT_COLOR))
 	column.add_child(_paragraph(
-			"Choose a language below to download its pack from GitHub. "
-			+ "The files are large (40–90 MB), so this can take a moment."))
+			"The pack downloads by itself and stays on this computer, so you can "
+			+ "stop and come back to it later. Packs are large (40–90 MB), so the "
+			+ "first download takes a moment."))
+
 	_packs_container = VBoxContainer.new()
 	_packs_container.add_theme_constant_override("separation", 4)
 	column.add_child(_packs_container)
-
-	var releases_link: RichTextLabel = RichTextLabel.new()
-	releases_link.bbcode_enabled = true
-	releases_link.fit_content = true
-	releases_link.selection_enabled = true
-	releases_link.custom_minimum_size.y = 24
-	releases_link.text = "[color=#8d99ae]If a button does not open, copy this address into a new tab: [/color][url=%s]%s[/url]" % [
-		AvailablePacks.RELEASES_PAGE_URL, AvailablePacks.RELEASES_PAGE_URL]
-	releases_link.meta_clicked.connect(func (meta: Variant) -> void:
-		OS.shell_open(str(meta))
-	)
-	column.add_child(releases_link)
-
-	column.add_child(HSeparator.new())
-	column.add_child(_heading("Step 2 — Open the pack you downloaded", 20, ACCENT_COLOR))
-	column.add_child(_paragraph(
-			"Use the button below to open the .zip file you just downloaded — "
-			+ "you can also drag it anywhere onto this page. "
-			+ "Nothing is uploaded: the pack is read here, on your own computer."))
-
-	var actions: HBoxContainer = HBoxContainer.new()
-	actions.add_theme_constant_override("separation", 12)
-	column.add_child(actions)
-
-	_browse_button = Button.new()
-	_browse_button.text = "Choose a .zip file…"
-	_browse_button.custom_minimum_size = Vector2(220, 44)
-	_browse_button.pressed.connect(_on_browse_pressed)
-	actions.add_child(_browse_button)
-
-	_resume_button = Button.new()
-	_resume_button.custom_minimum_size = Vector2(0, 44)
-	_resume_button.visible = false
-	_resume_button.pressed.connect(_on_resume_pressed)
-	actions.add_child(_resume_button)
 
 	_progress = ProgressBar.new()
 	_progress.custom_minimum_size.y = 22
@@ -93,24 +77,66 @@ func _ready() -> void:
 	_status.custom_minimum_size.y = 48
 	column.add_child(_status)
 
+	column.add_child(HSeparator.new())
+	column.add_child(_heading("Already have a pack file?", 16, MUTED_COLOR))
+	column.add_child(_paragraph(
+			"If you were sent a .zip directly, open it here — or drag it anywhere "
+			+ "onto this page. Nothing is uploaded either way: the pack is read "
+			+ "here, on your own computer."))
+
+	var actions: HBoxContainer = HBoxContainer.new()
+	actions.add_theme_constant_override("separation", 12)
+	column.add_child(actions)
+
+	_browse_button = Button.new()
+	_browse_button.text = "Choose a .zip file…"
+	_browse_button.custom_minimum_size = Vector2(220, 40)
+	_browse_button.pressed.connect(_on_browse_pressed)
+	actions.add_child(_browse_button)
+
+	var help: RichTextLabel = RichTextLabel.new()
+	help.bbcode_enabled = true
+	help.fit_content = true
+	help.selection_enabled = true
+	help.custom_minimum_size.y = 24
+	help.text = "[color=#8d99ae]Nothing here working? Write to [/color][url=mailto:%s]%s[/url]" % [
+		CONTACT_EMAIL, CONTACT_EMAIL]
+	help.meta_clicked.connect(func (meta: Variant) -> void:
+		OS.shell_open(str(meta))
+	)
+	column.add_child(help)
+
 	_picker = PackPicker.new()
 	_picker.picked.connect(_on_picked)
-	_picker.progress.connect(_on_progress)
+	_picker.progress.connect(_on_read_progress)
 	_picker.failed.connect(show_error)
 	add_child(_picker)
 	_picker.set_browse_anchor(_browse_button)
+
+	_downloader = PackDownloader.new()
+	_downloader.progress.connect(_on_download_progress)
+	_downloader.finished.connect(_on_download_finished)
+	_downloader.failed.connect(_on_download_failed)
+	add_child(_downloader)
+
+	_installed = PackCache.installed()
 
 	_available = AvailablePacks.new()
 	_available.listed.connect(_on_packs_listed)
 	add_child(_available)
 	_available.refresh()
 
-	_offer_cached_archive()
+	# Something usable may already be stored, so the list is drawn once before
+	# the network answers. A tester who is offline still gets their pack.
+	_rebuild_rows()
+	_status.text = "Looking for the available packs…"
 
 
 func set_busy(busy: bool, message: String = "") -> void:
+	_busy = busy
 	_browse_button.disabled = busy
-	_resume_button.disabled = busy
+	for button: Button in _action_buttons:
+		button.disabled = busy
 	_status.remove_theme_color_override("font_color")
 	_status.text = message
 
@@ -122,48 +148,148 @@ func show_error(message: String) -> void:
 	_status.text = message
 
 
-## Offers the pack from a previous visit. Only the browse path leaves one: a
-## dropped file lives in a folder the browser discards with the tab.
-func _offer_cached_archive() -> void:
-	var cached: String = PackPicker.cached_archive_path()
-	if cached.is_empty():
-		return
-	_resume_button.text = "Continue with %s" % cached.get_file()
-	_resume_button.visible = true
-
-
 func _on_packs_listed(packs: Array[Dictionary]) -> void:
+	_packs = packs
+	_installed = PackCache.installed()
+	_rebuild_rows()
+	if _status.text == "Looking for the available packs…":
+		_status.text = ""
+
+
+## Draws one row per pack. Called again whenever what is stored changes, because
+## the button on every row says what pressing it would do, and that answer moves
+## when a pack is downloaded or replaced.
+func _rebuild_rows() -> void:
 	for child: Node in _packs_container.get_children():
 		_packs_container.remove_child(child)
 		child.queue_free()
+	_action_buttons.clear()
+
+	var packs: Array[Dictionary] = _packs
+	if packs.is_empty():
+		packs = _packs_from_storage_only()
 
 	for pack: Dictionary in packs:
-		var row: HBoxContainer = HBoxContainer.new()
-		row.add_theme_constant_override("separation", 12)
+		_packs_container.add_child(_pack_row(pack))
 
-		var name_label: Label = Label.new()
-		name_label.text = "%s   (%s)" % [
-			AvailablePacks.locale_name(str(pack.locale)), str(pack.locale)]
-		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		row.add_child(name_label)
 
-		var size_label: Label = Label.new()
-		size_label.text = AvailablePacks.human_size(int(pack.size))
-		size_label.custom_minimum_size.x = 80
-		size_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		size_label.add_theme_color_override("font_color", MUTED_COLOR)
-		row.add_child(size_label)
+## When the listing has not arrived, a pack already on this computer is still
+## worth offering — it is the whole point of keeping it.
+func _packs_from_storage_only() -> Array[Dictionary]:
+	if _installed.is_empty():
+		return []
+	return [{
+		"locale": str(_installed.get("locale", "")),
+		"file_name": str(_installed.get("file_name", "")),
+		"size": int(_installed.get("size", 0)),
+		"url": "",
+		"version": str(_installed.get("version", "")),
+	}]
 
-		var download: Button = Button.new()
-		download.text = "Download"
-		download.custom_minimum_size.x = 120
-		var url: String = str(pack.url)
-		download.pressed.connect(func () -> void:
-			OS.shell_open(url)
-		)
-		row.add_child(download)
 
-		_packs_container.add_child(row)
+func _pack_row(pack: Dictionary) -> HBoxContainer:
+	var locale: String = str(pack.locale)
+	var is_stored: bool = str(_installed.get("locale", "")) == locale
+	var is_outdated: bool = is_stored and PackCache.is_outdated(_installed, pack)
+
+	var row: HBoxContainer = HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+
+	var name_label: Label = Label.new()
+	name_label.text = "%s   (%s)" % [AvailablePacks.locale_name(locale), locale]
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(name_label)
+
+	var size_label: Label = Label.new()
+	size_label.text = AvailablePacks.human_size(int(pack.size))
+	size_label.custom_minimum_size.x = 70
+	size_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	size_label.add_theme_color_override("font_color", MUTED_COLOR)
+	row.add_child(size_label)
+
+	var state_label: Label = Label.new()
+	state_label.custom_minimum_size.x = 150
+	state_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	if is_outdated:
+		state_label.text = "new version available"
+		state_label.add_theme_color_override("font_color", ACCENT_COLOR)
+	elif is_stored:
+		state_label.text = "on this computer"
+		state_label.add_theme_color_override("font_color", READY_COLOR)
+	else:
+		state_label.text = AvailablePacks.human_version(str(pack.version))
+		state_label.add_theme_color_override("font_color", MUTED_COLOR)
+	row.add_child(state_label)
+
+	var action: Button = Button.new()
+	action.custom_minimum_size = Vector2(130, 36)
+	action.disabled = _busy
+	if is_outdated:
+		action.text = "Update"
+	elif is_stored:
+		action.text = "Open"
+		action.add_theme_color_override("font_color", READY_COLOR)
+	else:
+		action.text = "Download"
+	action.pressed.connect(func () -> void: _on_pack_action(pack, is_stored and not is_outdated))
+	row.add_child(action)
+	_action_buttons.append(action)
+
+	return row
+
+
+## Opens the stored pack when there is nothing to fetch, and downloads otherwise.
+## `use_stored` is decided when the row is drawn rather than here, so the button
+## can never do something other than what its own label promised.
+func _on_pack_action(pack: Dictionary, use_stored: bool) -> void:
+	if _busy:
+		return
+
+	if use_stored:
+		var stored: Dictionary = PackCache.installed()
+		if stored.is_empty():
+			# Browser storage can be cleared from under us between the row being
+			# drawn and the button being pressed.
+			_installed = {}
+			_rebuild_rows()
+			show_error("That pack is no longer stored in this browser. Please download it again.")
+			return
+		archive_chosen.emit(str(stored.path))
+		return
+
+	if str(pack.get("url", "")).is_empty():
+		show_error("The list of packs could not be loaded, so this one cannot be downloaded. "
+				+ "Check your connection and reload the page.")
+		return
+
+	_progress.visible = true
+	_progress.value = 0
+	set_busy(true, "Starting the download…")
+	_downloader.download(pack)
+
+
+func _on_download_progress(downloaded_bytes: int, total_bytes: int) -> void:
+	_progress.visible = true
+	_progress.max_value = maxi(total_bytes, 1)
+	_progress.value = downloaded_bytes
+	if total_bytes > 0:
+		set_busy(true, "Downloading… %d of %d MB" % [
+			downloaded_bytes / (1024 * 1024), total_bytes / (1024 * 1024)])
+	else:
+		set_busy(true, "Downloading… %d MB" % (downloaded_bytes / (1024 * 1024)))
+
+
+func _on_download_finished(archive_path: String) -> void:
+	_progress.visible = false
+	_installed = PackCache.installed()
+	_rebuild_rows()
+	archive_chosen.emit(archive_path)
+
+
+func _on_download_failed(message: String) -> void:
+	_installed = PackCache.installed()
+	_rebuild_rows()
+	show_error(message)
 
 
 func _on_browse_pressed() -> void:
@@ -172,16 +298,7 @@ func _on_browse_pressed() -> void:
 	_picker.browse()
 
 
-func _on_resume_pressed() -> void:
-	var cached: String = PackPicker.cached_archive_path()
-	if cached.is_empty():
-		_resume_button.visible = false
-		show_error("That pack is no longer stored in this browser. Please open the file again.")
-		return
-	archive_chosen.emit(cached)
-
-
-func _on_progress(read_bytes: int, total_bytes: int) -> void:
+func _on_read_progress(read_bytes: int, total_bytes: int) -> void:
 	_progress.visible = true
 	_progress.max_value = maxi(total_bytes, 1)
 	_progress.value = read_bytes
@@ -191,6 +308,8 @@ func _on_progress(read_bytes: int, total_bytes: int) -> void:
 
 func _on_picked(archive_path: String) -> void:
 	_progress.visible = false
+	_installed = PackCache.installed()
+	_rebuild_rows()
 	archive_chosen.emit(archive_path)
 
 

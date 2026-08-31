@@ -109,11 +109,14 @@ func _on_finish_requested() -> void:
 
 
 func _on_load_another_requested() -> void:
+	# The archive is closed but deliberately left on disk: the tester is going
+	# back to the list, not throwing the pack away, and re-downloading 90 MB to
+	# return to a pack they had a minute ago would be the whole problem this
+	# screen exists to avoid. Switching to a different language replaces it.
 	_close_pack()
-	PackPicker.clear_cached_archives()
-	# The load screen decides what to offer when it is built, so it is built
-	# again: the pack just discarded must no longer be offered as "continue
-	# with", and the tester should land on a clean screen.
+	# The load screen reads what is stored when it is built, so it is built
+	# again, and the pack just closed shows as ready to open rather than as
+	# something to download.
 	remove_child(_load_screen)
 	_load_screen.queue_free()
 	_load_screen = LoadScreen.new()

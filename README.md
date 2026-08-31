@@ -5,9 +5,9 @@ language pack — the grapheme-phoneme pairs, syllables, words and sentences,
 together with the recordings the game plays for them — and report anything that
 is wrong.
 
-No account, no server, nothing uploaded. The tester downloads a pack, opens it
-in the page, works through the four lists, and leaves with a CSV report to email
-to `contact@excellolab.org`.
+No account, no server, nothing uploaded. The tester picks a language, the pack
+downloads itself, and they work through the four lists and leave with a CSV
+report to email to `contact@excellolab.org`.
 
 Part of the [Kalulu](https://github.com/Excello-Recherche-Education/Kalulu)
 project by [Excello Recherche & Éducation](https://github.com/Excello-Recherche-Education).
@@ -16,21 +16,29 @@ project by [Excello Recherche & Éducation](https://github.com/Excello-Recherche
 
 ## What a tester does
 
-1. **Get a pack.** The first screen lists the packs in the **latest**
-   [Kalulu-Languages release](https://github.com/Excello-Recherche-Education/Kalulu-Languages/releases)
-   with their real sizes, and a download button for each. The list is read from
-   GitHub when the page loads, so publishing a release is all it takes to put
-   new packs in front of testers — nothing here needs rebuilding, and adding a
-   locale needs no code change. Note that GitHub's "latest" skips prereleases,
-   so pack releases must not be marked as such.
-2. **Open it.** Use the file button, or drag the `.zip` onto the page. The pack
-   is read locally; it never leaves the machine.
-3. **Check it.** Four tabs — **GP**, **Syllables**, **Words**, **Sentences** —
+1. **Pick a language.** The first screen lists every pack with its size and the
+   date it was published, and one button per row. Pressing it downloads the pack
+   and opens it — the tester never sees a `.zip`, and never has to know where the
+   packs are kept. The list is read from the storage itself when the page loads,
+   so adding a locale is a pure upload: nothing here needs rebuilding and no code
+   changes.
+2. **Come back whenever.** The pack is kept in the browser's own storage, so
+   closing the tab and returning tomorrow opens it again instantly instead of
+   downloading 90 MB a second time. That row then reads *on this computer*.
+3. **Get updates in one press.** Each pack's published date is remembered
+   alongside it. When a newer one has been put up, the row says *new version
+   available* and the button becomes **Update**. Nothing downloads on its own —
+   an update is always the tester's decision.
+4. **Check it.** Four tabs — **GP**, **Syllables**, **Words**, **Sentences** —
    each listing every entry with its lesson number, a ▶ button for its
    recording, a box to tick when something is wrong, and a field to say what.
    Entries whose recording is absent from the pack are marked `missing` in red.
-4. **Send the report.** *Finish and download my report* produces a CSV and a
+5. **Send the report.** *Finish and download my report* produces a CSV and a
    thank-you screen with a `mailto:` link.
+
+Opening a `.zip` by hand still works, from the bottom of the first screen or by
+dragging it onto the page. It is the way in when the storage cannot be reached,
+and the only way to look at a pack that has not been published yet.
 
 The report is saved in the browser as it is written, so closing the tab does not
 lose an afternoon's work.
@@ -78,6 +86,25 @@ by trial and error.
 A pack is a 40–90 MB ZIP holding a SQLite database, thousands of MP3 files, and
 media the checker does not use. Handling that in a browser shapes the design:
 
+- **Packs come from S3, not from the GitHub releases.** Not a preference: GitHub
+  sends no `Access-Control-Allow-Origin` on release assets, so a browser throws
+  away a response it has already received, and no amount of code here can change
+  that. They are served instead from the `Languages-Checker/` folder of the
+  bucket the game already downloads from, which is public for exactly this
+  purpose. The game reaches the same packs through a presigned URL because it is
+  a native build, where CORS does not apply.
+- **The pack is kept between visits, one at a time.** It is written to the
+  browser's storage (IndexedDB) with its published date beside it, which is what
+  makes "come back tomorrow" and "a new version is available" possible. Only one
+  is kept: in a browser the whole user filesystem is held in memory, so five
+  packs would mean carrying ~295 MB of it. Reports are unaffected — they are
+  saved per locale and outlive the archive they were written against.
+- **The download is done in JavaScript, on the web.** `HTTPRequest`'s
+  `set_download_file()` reports a complete, successful transfer in the web export
+  and writes no file at all, so the browser fetches the pack itself and hands it
+  over a slice at a time — the same shape as reading a file the tester picked.
+  Desktop uses `HTTPRequest` normally. Either way the size on disk is what
+  decides success, never the result code.
 - **Only `language.db` is written to disk.** SQLite needs a real file, so that
   one ~600 KB file is extracted. Every recording is read straight out of the
   ZIP when the tester presses play, through `AudioStreamMP3.load_from_buffer()`.
@@ -119,7 +146,9 @@ sources/
 ├── pack/
 │   ├── pack_archive.gd        read-only view of a <locale>.zip
 │   ├── pack_picker.gd         drag-and-drop + browser/desktop file dialog
-│   └── available_packs.gd     the downloadable list, from GitHub releases
+│   ├── pack_downloader.gd     fetches a pack into the browser's storage
+│   ├── pack_cache.gd          what is kept between visits, and its version
+│   └── available_packs.gd     the downloadable list, read from S3
 ├── data/
 │   ├── checkable.gd           one reviewable entry
 │   └── language_data.gd       language.db -> the four lists
@@ -161,6 +190,18 @@ and names anything it hid from the tester, so a fault in a pack is still visible
 note  Sentence: 2 repeated (il a gagné un trophée au tennis, …) — hidden from the tester
 ```
 
+**The download path**, against the real storage — lists the packs, downloads the
+smallest, checks the version was recorded, and opens what arrived:
+
+```bash
+godot --headless --path . --script tests/download_test.gd
+godot --headless --path . --script tests/download_test.gd -- fr_FR
+```
+
+It really does transfer the pack, so it takes about as long as the download
+does. Passing here does *not* mean the web build can download: it runs on
+desktop, where `HTTPRequest` works and CORS does not exist.
+
 **The interface**, saving a picture of each screen so layout can be reviewed
 without opening the editor:
 
@@ -185,6 +226,22 @@ node tests/web_e2e.mjs http://localhost:8099/index.html \
 
 Remember to delete `build/lang-tester/testpack.zip` afterwards so it is never published.
 
+**Downloading, in a real browser** — the only run that proves the two things
+which cannot be checked anywhere else: that the storage really does send the
+CORS headers a browser demands, and that the pack survives a reload in
+IndexedDB. It clicks Download, waits for SQLite to open the database, reloads
+the page, opens the pack again, and asserts the pack was fetched **exactly
+once** across the whole run:
+
+```bash
+node tests/web_download_e2e.mjs http://localhost:8099/index.html /tmp/kalulu_shots
+```
+
+Same Chrome invocation as above. It drives a canvas at measured coordinates, so
+if a click lands on the wrong row, re-measure from the `01_pack_list.png` it
+saves — the constants are at the top of the file, and the web positions are not
+the same as the desktop ones.
+
 ---
 
 ## Related repositories
@@ -195,8 +252,21 @@ Remember to delete `build/lang-tester/testpack.zip` afterwards so it is never pu
 | [Kalulu-Languages](https://github.com/Excello-Recherche-Education/Kalulu-Languages) | The packs themselves, published as releases |
 | Kalulu-AWS-Lambda | The backend the game talks to — the checker does not use it |
 
-The checker reads packs straight from the GitHub releases, so it needs no
-backend and no API access of its own.
+The checker downloads packs straight from the public `Languages-Checker/` folder
+of the `kalulu-app-language-packs` bucket, so it needs no backend and no
+credentials of its own. **Publishing a Kalulu-Languages release does not put a
+pack in front of testers** — it has to be copied into that folder, which is a
+server-side copy and moves no bytes:
+
+```bash
+aws s3 cp s3://kalulu-app-language-packs/fr_FR.zip \
+          s3://kalulu-app-language-packs/Languages-Checker/fr_FR.zip --profile kalulu
+```
+
+Keeping that folder separate from the packs the game downloads is deliberate: a
+pack can be put in front of testers before it goes anywhere near production. Only
+that folder is readable without credentials — the root packs and the database
+dumps beside them answer 403.
 
 ---
 

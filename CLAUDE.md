@@ -15,17 +15,57 @@ behind the design. This file covers only what is easy to get wrong.
 - **Engine**: Godot 4.7.1 (GDScript)
 - **Target**: Web, single-threaded, GDExtension support on
 - **SQLite**: `godot-sqlite` 4.7, vendored in `addons/`
-- **No backend.** Packs come from Kalulu-Languages GitHub releases, downloaded
-  by the tester and opened locally. There is no API, no account, no upload.
+- **No backend.** Packs are downloaded straight from S3 by the page itself.
+  There is no API, no account, no upload.
+
+## Publishing a pack for testers
+
+Packs are served from the **`Languages-Checker/` folder** of the
+`kalulu-app-language-packs` bucket (`eu-west-3`) — *not* from the bucket root,
+which is what the game downloads through a presigned URL, and *not* from GitHub
+releases. Publishing a release does **not** put it in front of testers. Copy it
+across, server-side, so no bytes travel:
+
+```bash
+aws s3 cp s3://kalulu-app-language-packs/fr_FR.zip \
+          s3://kalulu-app-language-packs/Languages-Checker/fr_FR.zip --profile kalulu
+```
+
+The checker lists that folder, so a new locale needs no code change and no
+rebuild — the upload is the whole deployment. The last-modified date of each
+object is the version testers are shown and what an update is judged against, so
+re-uploading an unchanged pack asks every tester to download it again.
+
+Only that folder is public: anonymous `GetObject` on `Languages-Checker/*` and
+anonymous `ListBucket` scoped to the same prefix. The root packs and
+`language-db-dumps/` answer 403, and must keep doing so.
 
 ## Things that will bite you
 
-- **Testers always get the latest Kalulu-Languages release**, resolved at page
-  load from `/releases/latest`. The team's rule is that the latest release is
-  always the one to review, so this is deliberate — but GitHub's "latest"
-  excludes prereleases and drafts. A pack published as a prerelease will not
-  reach testers, and they will be offered the previous release with nothing to
-  say so. Do not use prereleases for pack distribution.
+- **A browser cannot download a GitHub release asset, ever.** GitHub sends no
+  `Access-Control-Allow-Origin` on release assets — not on the `github.com`
+  redirect, not on the `release-assets.githubusercontent.com` blob behind it —
+  so the browser discards a response it has already received. The API endpoint
+  does send the header but redirects to that same blob host, and CORS is judged
+  on the final response. This is why packs are served from S3 instead. The game
+  gets away with GitHub-shaped URLs because it is a **native** build, where CORS
+  does not exist; do not reason from what the frontend does.
+- **`HTTPRequest.set_download_file()` silently does nothing in the web export.**
+  Verified on 4.7.2: the transfer runs, `request_completed` reports
+  `RESULT_SUCCESS` and HTTP 200, and no file is ever created — the destination
+  folder was still empty after a 41 MB download had visibly finished. So
+  `PackDownloader` fetches through JavaScript on the web and uses `HTTPRequest`
+  only on desktop. Never trust the result code: what is on disk decides, which
+  is what `PackDownloader._settle()` is for.
+- **GDScript lambdas capture by value.** `var done := false` assigned from
+  inside a signal callback stays `false` outside it, so a wait loop spins until
+  it times out on a request that in fact succeeded. This cost an afternoon in
+  `tests/download_test.gd`; collect signal results into **members**, never into
+  locals a lambda closes over.
+- **One pack is kept at a time, on purpose.** In a browser the whole user
+  filesystem is held in memory, so five packs would mean carrying ~295 MB of it.
+  Downloading a different locale replaces the stored one. Reports are unaffected:
+  `ReportStore` keys them by locale and they outlive the archive.
 - **`language.db` is the source of truth, never the CSV exports** next to it in
   the pack. Released packs exist with empty `words_list.csv` and
   `syllables_list.csv` (`es_CO` is missing 1622 words and 240 syllables from its
@@ -60,23 +100,37 @@ behind the design. This file covers only what is easy to get wrong.
 
 ## Verifying changes
 
-There is no editor in CI, so all three checks are scripted. Run at least the
-first after any change to pack reading or reporting:
+There is no editor in CI, so every check is scripted. Run at least the first
+after any change to pack reading or reporting:
 
 ```bash
 # pipeline against real packs
 godot --headless --path . --script tests/pack_smoke_test.gd -- ~/packs/fr_FR.zip ~/packs/es_UY.zip
+
+# the download path against the real bucket: lists, downloads, records, opens
+godot --headless --path . --script tests/download_test.gd
 
 # pictures of every screen
 godot --path . --resolution 1280x800 --script tests/ui_capture.gd -- ~/packs/fr_FR.zip ~/shots
 
 # the exported build, in a real browser (see README for the full invocation)
 node tests/web_e2e.mjs http://localhost:8099/index.html http://localhost:8099/testpack.zip /tmp/dl /tmp/shots
+node tests/web_download_e2e.mjs http://localhost:8099/index.html /tmp/shots
 ```
 
-The web run is the only place that proves SQLite opens a database on the
-browser's filesystem; look for `Opened database successfully` in its console
-output.
+**The two browser runs are not optional for anything touching downloads.**
+`download_test.gd` passes happily against a web build that cannot download at
+all — it runs on desktop, where `HTTPRequest` works and CORS does not exist.
+Only `web_download_e2e.mjs` sees the two things that actually break: that the
+storage sends CORS headers, and that the pack survives a reload in IndexedDB
+(it asserts the pack is fetched exactly once across a reload). The web runs are
+also the only place that proves SQLite opens a database on the browser's
+filesystem; look for `Opened database successfully` in the console output.
+
+`web_download_e2e.mjs` clicks a canvas at measured coordinates, so a layout
+change can send the click to the wrong row — the constants at the top of the
+file say to re-measure from `01_pack_list.png`, and the desktop and web
+positions differ because the intro paragraph wraps at some widths.
 
 ## Conventions
 

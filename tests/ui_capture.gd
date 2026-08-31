@@ -20,7 +20,7 @@ func _init() -> void:
 
 	_main = (load("res://sources/main.tscn") as PackedScene).instantiate()
 	root.add_child(_main)
-	# Long enough for the list of downloadable packs to come back from GitHub.
+	# Long enough for the list of downloadable packs to come back from storage.
 	for _i: int in 240:
 		await process_frame
 

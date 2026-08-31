@@ -23,7 +23,6 @@ signal picked(archive_path: String)
 signal progress(read_bytes: int, total_bytes: int)
 signal failed(message: String)
 
-const ARCHIVE_DIRECTORY: String = "user://packs"
 const ARCHIVE_EXTENSION: String = "zip"
 ## Read a slice at a time so a 90 MB pack never exists three times over (once
 ## in the browser, once in the engine, once on the virtual filesystem).
@@ -145,27 +144,6 @@ func browse() -> void:
 	_file_dialog.popup_centered_ratio(0.7)
 
 
-## Path of the archive kept from a previous visit, or "" when there is none.
-## Only the browse path leaves one behind: a dropped file lives in a temporary
-## folder the browser throws away when the tab closes.
-static func cached_archive_path() -> String:
-	var directory: DirAccess = DirAccess.open(ARCHIVE_DIRECTORY)
-	if directory == null:
-		return ""
-	for file_name: String in directory.get_files():
-		if file_name.get_extension().to_lower() == ARCHIVE_EXTENSION:
-			return ARCHIVE_DIRECTORY.path_join(file_name)
-	return ""
-
-
-static func clear_cached_archives() -> void:
-	var directory: DirAccess = DirAccess.open(ARCHIVE_DIRECTORY)
-	if directory == null:
-		return
-	for file_name: String in directory.get_files():
-		directory.remove(file_name)
-
-
 func _process(_delta: float) -> void:
 	_follow_anchor()
 	_poll_browser()
@@ -242,13 +220,12 @@ func _begin_browser_read() -> void:
 
 	# Only one pack is kept at a time, so a tester switching packs does not
 	# slowly fill up the browser's storage.
-	clear_cached_archives()
-	if not DirAccess.dir_exists_absolute(ARCHIVE_DIRECTORY):
-		DirAccess.make_dir_recursive_absolute(ARCHIVE_DIRECTORY)
+	PackCache.clear()
+	PackCache.ensure_directory()
 
 	# The name comes from the tester's computer, so it is not trusted to be a
 	# well-behaved path component.
-	_destination_path = ARCHIVE_DIRECTORY.path_join(
+	_destination_path = PackCache.path_for(
 			PackArchive.sanitize_file_name(file_name.get_file()))
 	_destination = FileAccess.open(_destination_path, FileAccess.WRITE)
 	if _destination == null:
@@ -290,8 +267,12 @@ func _consume_browser_chunk() -> void:
 		_destination.close()
 		_destination = null
 		_picker.reset()
-		# Persist to IndexedDB so the pack survives a reload of the page.
-		JavaScriptBridge.force_fs_sync()
+		# Recorded with no version: this pack came off the tester's own computer,
+		# so there is nothing to compare against the listing and an update can
+		# never be offered for it. PackCache.record() persists to IndexedDB, so
+		# the pack survives a reload of the page.
+		var stored_name: String = _destination_path.get_file()
+		PackCache.record(stored_name.get_basename(), stored_name, "", _read_bytes)
 		picked.emit(_destination_path)
 		return
 
