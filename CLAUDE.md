@@ -83,6 +83,29 @@ anonymous `ListBucket` scoped to the same prefix. The root packs and
   two ship separately and you would get two. There is a contract test for it,
   built from a payload this checker really produced —
   `tests/report_payload_dump.gd` regenerates the fixture.
+- **The API's stage name goes in the path, not just the host.** The custom
+  domains map with an empty key onto routes declared `ANY /prod/{proxy+}` and
+  `ANY /dev/{proxy+}`, so the working addresses are
+  `https://api.kalulu.org/**prod**/<route>` and
+  `https://dev.api.kalulu.org/**dev**/<route>`. Drop the segment and API Gateway
+  answers its own `{"message":"Not Found"}` without ever reaching the Lambda —
+  which reads exactly like a route that was never deployed, and sent me looking
+  in the wrong place. When it *does* reach the Lambda you get the Lambda's own
+  wording instead: `{"error": "Path /… not found in routes"}`. That difference
+  is the quickest way to tell a bad URL from a missing route.
+- **Reports go to the *dev* stage, on purpose.** The checker is an internal tool
+  for a handful of volunteers, not part of the product, so it has no business
+  depending on a production deploy or adding traffic to the stack the game
+  relies on. The practical effect: merging and deploying **DEV** is all it takes
+  to make the button work — promoting to PROD is not required. The cost is that
+  `dev` tracks `$LATEST`, so a deploy mid-review can cost one send; the download
+  is still sitting there when it does.
+
+  `?api=prod` switches to production, should the tool ever need to outlive dev.
+  Only the exact word `prod` does anything and both addresses are constants in
+  `ReportSender` — a query parameter that could name a host would turn a crafted
+  link into a way of collecting other people's reports. On desktop the same
+  choice is `-- --api prod`.
 - **Sending must never replace the download.** If the endpoint is unreachable —
   offline, not deployed yet, backend down — the tester still has the CSV and the
   address. A failure is the moment they are most likely to close the tab

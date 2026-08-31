@@ -20,9 +20,29 @@ extends Node
 signal sent()
 signal failed(message: String)
 
-## The production API. The report endpoint has to be live on PROD for this to
-## work; until then the button reports a failure and the download still stands.
-const ENDPOINT: String = "https://api.kalulu.org/checker_report"
+## **The stage name is part of the path, not only of the host.** The custom
+## domains map with an empty key onto routes declared as `ANY /prod/{proxy+}`
+## and `ANY /dev/{proxy+}`, so `https://api.kalulu.org/checker_report` misses
+## every route and returns the gateway's own "Not Found" — it never reaches the
+## Lambda. `https://api.kalulu.org/prod/checker_report` does. The backend strips
+## the prefix again in `_normalize_path()`. Match `ServerManagerClass` in the
+## frontend, which builds its URLs the same way.
+## **Reports go to the dev stage, deliberately.** The checker is an internal
+## tool for a handful of volunteers, not part of the product, so it has no
+## business depending on a production deploy or adding traffic to the stack the
+## game relies on. Sending a report is also the only call it makes, and the
+## worst case of dev being mid-deploy is one failed send with the download still
+## sitting there.
+##
+## The practical effect: merging and deploying **DEV** is all it takes to make
+## the button work. Promoting to PROD is not required and changes nothing here.
+const DEV_BASE: String = "https://dev.api.kalulu.org/dev/"
+const PROD_BASE: String = "https://api.kalulu.org/prod/"
+const ENDPOINT_PATH: String = "checker_report"
+
+## Selects the production API instead, should the tool ever need to outlive dev:
+## open the page as `…/index.html?api=prod`.
+const PROD_SELECTOR: String = "prod"
 
 const REQUEST_TIMEOUT_SECONDS: float = 60.0
 
@@ -51,7 +71,7 @@ func send(store: ReportStore, csv: PackedByteArray, name: String, email: String)
 
 	var payload: Dictionary = build_payload(store, csv, name, email)
 	var error: Error = _request.request(
-			ENDPOINT,
+			endpoint(),
 			["Content-Type: application/json"],
 			HTTPClient.METHOD_POST,
 			JSON.stringify(payload))
@@ -59,6 +79,42 @@ func send(store: ReportStore, csv: PackedByteArray, name: String, email: String)
 		_fail("Could not reach us to send the report (%s)." % error_string(error))
 		return
 	_busy = true
+
+
+## Where the report is posted: the dev stage, unless the page was opened with
+## `?api=prod`.
+static func endpoint() -> String:
+	return endpoint_for(_requested_api())
+
+
+## Split out from endpoint() so the choice can be tested without a browser.
+##
+## Only the exact word "prod" selects anything, and both addresses are constants
+## here. A caller cannot supply a URL: the report is what a tester wrote, and a
+## query parameter that could redirect it to someone else's server would be a
+## way to collect other people's reports by sending them a link.
+static func endpoint_for(selector: String) -> String:
+	var base: String = PROD_BASE if selector == PROD_SELECTOR else DEV_BASE
+	return base + ENDPOINT_PATH
+
+
+## The `api` query parameter, or "" when there is none. Only the web build has a
+## page address to read; on desktop the same choice is a command-line argument,
+## so the Godot editor can reach dev too.
+static func _requested_api() -> String:
+	if OS.has_feature("web"):
+		var search: String = str(JavaScriptBridge.eval(
+				"window.location.search || ''", true))
+		for pair: String in search.trim_prefix("?").split("&", false):
+			if pair.begins_with("api="):
+				return pair.trim_prefix("api=").to_lower()
+		return ""
+
+	var arguments: PackedStringArray = OS.get_cmdline_user_args()
+	for index: int in arguments.size():
+		if arguments[index] == "--api" and index + 1 < arguments.size():
+			return arguments[index + 1].to_lower()
+	return ""
 
 
 ## The body posted to the endpoint. Separate from send() so the shape can be

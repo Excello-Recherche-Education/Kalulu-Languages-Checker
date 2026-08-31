@@ -42,7 +42,10 @@ project by [Excello Recherche & Éducation](https://github.com/Excello-Recherche
    instead of it.
 
    This is the only time the checker talks to a server, and only the report is
-   sent: never the pack, and nothing else from the tester's computer.
+   sent: never the pack, and nothing else from the tester's computer. It posts
+   to the **dev** API — this is an internal tool, so it has no business
+   depending on a production deploy or adding traffic to the stack the game
+   relies on. Opening the page as `?api=prod` switches it.
 
 Opening a `.zip` by hand still works, from the bottom of the first screen or by
 dragging it onto the page. It is the way in when the storage cannot be reached,

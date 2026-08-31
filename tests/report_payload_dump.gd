@@ -35,11 +35,34 @@ func _initialize() -> void:
 	file.store_string(JSON.stringify(payload))
 	file.close()
 
-	print("endpoint:      %s" % ReportSender.ENDPOINT)
+	# The stage name belongs in the path as well as the host, and getting that
+	# wrong returns the gateway's own "Not Found" without ever reaching the
+	# Lambda — which reads exactly like a route that was never deployed.
+	_check("the default is the dev stage, and carries it in the path",
+			ReportSender.endpoint_for("") == "https://dev.api.kalulu.org/dev/checker_report")
+	_check("production is reachable on request, and carries its own stage",
+			ReportSender.endpoint_for("prod") == "https://api.kalulu.org/prod/checker_report")
+	# Reports are what testers wrote. A selector that could name an arbitrary
+	# host would turn a crafted link into a way of collecting them.
+	for hostile: String in ["https://evil.example.com/", "//evil.example.com",
+			"PROD ", "dev", "anything"]:
+		_check("\"%s\" cannot redirect the report" % hostile,
+				ReportSender.endpoint_for(hostile) == "https://dev.api.kalulu.org/dev/checker_report")
+
+	print("endpoint:      %s" % ReportSender.endpoint())
 	print("keys:          %s" % ", ".join(PackedStringArray(payload.keys())))
 	print("locale:        %s" % payload.locale)
 	print("flagged:       %d" % int(payload.flagged))
 	print("csv bytes:     %d" % csv.size())
 	print("name/email trimmed: %s / %s" % [payload.get("name"), payload.get("email")])
 	print("wrote %s" % out_path)
-	quit(0)
+	quit(1 if _failures > 0 else 0)
+
+
+var _failures: int = 0
+
+
+func _check(what: String, passed: bool) -> void:
+	print("  %s  %s" % ["ok  " if passed else "FAIL", what])
+	if not passed:
+		_failures += 1
