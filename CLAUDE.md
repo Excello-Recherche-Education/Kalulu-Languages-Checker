@@ -66,6 +66,25 @@ anonymous `ListBucket` scoped to the same prefix. The root packs and
   filesystem is held in memory, so five packs would mean carrying ~295 MB of it.
   Downloading a different locale replaces the stored one. Reports are unaffected:
   `ReportStore` keys them by locale and they outlive the archive.
+- **Writing a pack and persisting it are not the same moment.**
+  `JavaScriptBridge.force_fs_sync()` is asynchronous and there is no way to await
+  it from GDScript — the completion flag lives on `GodotFS._syncing`, inside the
+  module closure, and neither `FS` nor `Module` is reachable from page scope.
+  Measured against the live site, a 41 MB pack took **between 2 and 10 seconds**
+  to reach IndexedDB after the tester was already looking at the entry list. A
+  tab closed inside that window loses the pack.
+
+  This is survivable and deliberately so: `PackCache.installed()` checks the
+  archive really exists and matches the recorded byte size, so a half-finished
+  sync shows up as *Download* again, never as an *Open* button over a truncated
+  archive. The cost of the race is one repeated download, and there is no fix
+  short of reaching into engine internals — so do not "fix" it by trusting the
+  record on its own. **Do not weaken that size check.**
+
+  It also means a test cannot reload straight after a download and expect the
+  pack to still be there. `web_download_e2e.mjs` waits for IndexedDB usage to
+  settle first; without that wait it passed against a local server and failed
+  against the real host, purely on timing.
 - **`language.db` is the source of truth, never the CSV exports** next to it in
   the pack. Released packs exist with empty `words_list.csv` and
   `syllables_list.csv` (`es_CO` is missing 1622 words and 240 syllables from its

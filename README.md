@@ -99,6 +99,13 @@ media the checker does not use. Handling that in a browser shapes the design:
   is kept: in a browser the whole user filesystem is held in memory, so five
   packs would mean carrying ~295 MB of it. Reports are unaffected — they are
   saved per locale and outlive the archive they were written against.
+- **Saving finishes a few seconds after the pack opens.** The engine's sync to
+  IndexedDB is asynchronous and cannot be waited on from GDScript; a 41 MB pack
+  took between 2 and 10 seconds in practice, while the tester was already
+  reading the first tab. Closing the tab inside that window loses the pack and
+  costs one repeated download — nothing worse, because what is stored is checked
+  against its recorded size before being offered, so a half-written archive is
+  never opened.
 - **The download is done in JavaScript, on the web.** `HTTPRequest`'s
   `set_download_file()` reports a complete, successful transfer in the web export
   and writes no file at all, so the browser fetches the pack itself and hands it

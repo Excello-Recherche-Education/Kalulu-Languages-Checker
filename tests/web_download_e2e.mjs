@@ -18,6 +18,8 @@ if (!appUrl) {
 	process.exit(2);
 }
 
+const appOrigin = new URL(appUrl).origin;
+
 // The interface is drawn on a canvas, so there is nothing to query for a
 // position. These are measured from 01_pack_list.png at a 1280x800 window, and
 // they are not the same as the desktop build's: the intro paragraph wraps onto
@@ -103,6 +105,16 @@ async function waitForEngine() {
 const packRequests = () => requestedUrls.filter((u) => /Languages-Checker\/.*\.zip/.test(u));
 const listRequests = () => requestedUrls.filter((u) => /list-type=2/.test(u));
 
+// The smallest pack is ~41 MB, so anything above this means a pack really did
+// reach IndexedDB rather than just the engine's own cached files.
+const MIN_PERSISTED_BYTES = 20 * 1024 * 1024;
+
+async function indexedDbBytes() {
+	const report = await send('Storage.getUsageAndQuota', { origin: appOrigin });
+	const breakdown = (report.usageBreakdown || []).find((b) => b.storageType === 'indexeddb');
+	return Math.round(breakdown?.usage ?? 0);
+}
+
 let failures = 0;
 function check(what, passed) {
 	console.log(`  ${passed ? 'ok  ' : 'FAIL'}  ${what}`);
@@ -144,9 +156,8 @@ async function main() {
 	await send('Network.enable');
 
 	// Start as a first visit would: no pack, no reports.
-	const origin = new URL(appUrl).origin;
 	await send('Storage.clearDataForOrigin', {
-		origin, storageTypes: 'indexeddb,local_storage,cache_storage',
+		origin: appOrigin, storageTypes: 'indexeddb,local_storage,cache_storage',
 	});
 
 	console.log(`Loading ${appUrl}`);
@@ -176,6 +187,28 @@ async function main() {
 	await sleep(2500);
 	await screenshot('03_checker_screen');
 	check('the pack was downloaded exactly once', packRequests().length === 1);
+
+	// Writing the pack and *persisting* it are not the same moment. The engine's
+	// filesystem sync to IndexedDB is asynchronous and takes seconds for a pack
+	// this size — measured at 5-10 s for 41 MB — and reloading before it lands
+	// throws the pack away. Waiting for storage to actually grow is what makes
+	// this test deterministic; without it, it passes on a fast local server and
+	// fails against a real host, purely on timing.
+	console.log('\nWaiting for the filesystem sync to reach IndexedDB…');
+	const settleStart = Date.now();
+	let lastUsage = -1;
+	let steady = 0;
+	await waitFor('IndexedDB usage to settle', async () => {
+		const usage = await indexedDbBytes();
+		if (usage === lastUsage && usage > MIN_PERSISTED_BYTES) {
+			steady++;
+		} else {
+			steady = 0;
+		}
+		lastUsage = usage;
+		return steady >= 2;
+	}, 120000, 1000);
+	console.log(`  persisted ${Math.round(lastUsage / 1048576)} MB after ${Math.round((Date.now() - settleStart) / 1000)} s`);
 
 	// The real test of persistence: come back to the page as a tester would
 	// tomorrow, and open the same pack without fetching a single byte of it.
