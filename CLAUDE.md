@@ -4,8 +4,9 @@
 
 A web tool for volunteer testers to review the contents of a Kalulu language
 pack and report data problems: mispronounced or wrong recordings, misspelled
-text, missing audio. Output is a CSV the tester emails to
-`contact@excellolab.org`.
+text, missing audio. Output is a CSV, which one press sends to
+`developer@excellolab.org` — or which the tester can download and email there
+themselves. Nothing is downloaded unless they ask for it.
 
 Read `README.md` first — it explains the tester's journey and the reasoning
 behind the design. This file covers only what is easy to get wrong.

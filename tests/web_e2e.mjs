@@ -167,19 +167,56 @@ async function main() {
 	const FIRST_ROW_Y = 156;
 	const PROBLEM_CHECKBOX_X = 566;
 	const FINISH_BUTTON = { x: viewport.w - 146, y: viewport.h - 34 };
+	// Measured from 04_thank_you.png, where the button spans y 528–568. Unlike
+	// the footer above, this one is laid out from the top of a centred column,
+	// so it does not follow the viewport height and is quoted outright.
+	const DOWNLOAD_BUTTON_Y = 548;
 
 	console.log('Reporting a problem on the first row…');
 	await clickAt(PROBLEM_CHECKBOX_X, FIRST_ROW_Y);
 	await screenshot('03_problem_ticked');
 
-	console.log('Clicking "Finish and download my report"…');
+	console.log('Clicking "Finish testing and send report"…');
 	await clickAt(FINISH_BUTTON.x, FINISH_BUTTON.y);
 	await sleep(2500);
 	await screenshot('04_thank_you');
 
 	const { readdir, readFile } = await import('node:fs/promises');
+	// Chrome creates the download directory only when it first writes to it, so
+	// "not there at all" is the normal answer before anything is downloaded —
+	// and is the answer the unasked-download check below is hoping for.
+	const csvsPresent = async () => {
+		try {
+			return (await readdir(downloadDir)).filter((f) => f.endsWith('.csv'));
+		} catch (error) {
+			if (error.code === 'ENOENT') return [];
+			throw error;
+		}
+	};
+
+	// Arriving here must not download anything: the tester may be about to press
+	// "Send my report", and a file they did not ask for invites them to email a
+	// second copy of what we already have.
+	await sleep(2000);
+	const unasked = await csvsPresent();
+	if (unasked.length) {
+		console.log(`FAILED: ${unasked.join(', ')} was downloaded without being asked for`);
+		process.exit(1);
+	}
+	console.log('  ok    nothing was downloaded unasked');
+
+	// The buttons row is centred under a 720px column, and on the web the
+	// "Show me the file" button is hidden — so the row is the 240px download
+	// button and the 180px mail button with 12px between them. Re-measure from
+	// 04_thank_you.png if a click ever lands somewhere unexpected.
+	const DOWNLOAD_BUTTON = { x: Math.round(viewport.w / 2) - 96, y: DOWNLOAD_BUTTON_Y };
+
+	console.log('Clicking "Download the report"…');
+	await clickAt(DOWNLOAD_BUTTON.x, DOWNLOAD_BUTTON.y);
+	await screenshot('05_download_requested');
+
 	const files = await waitFor('the CSV download to appear', async () => {
-		const found = (await readdir(downloadDir)).filter((f) => f.endsWith('.csv'));
+		const found = await csvsPresent();
 		return found.length > 0 ? found : false;
 	}, 30000);
 	console.log(`  downloaded: ${files.join(', ')}`);

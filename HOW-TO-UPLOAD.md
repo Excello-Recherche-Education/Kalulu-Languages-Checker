@@ -391,7 +391,9 @@ Something along these lines:
 > When something is wrong (the recording says a different word, the spelling is
 > wrong, the sound is silent or cut off), tick the box on that line and write
 > what is wrong in your own words. When you are done, press
-> **Finish and download my report** and email us the file it gives you.
+> **Finish testing and send report**, then **Send my report** — that is all we
+> need. If you would rather email it yourself, the same screen has a
+> **Download the report** button and our address.
 >
 > Nothing is uploaded and no account is needed. You can close the page and come
 > back later: your report is kept in your browser.

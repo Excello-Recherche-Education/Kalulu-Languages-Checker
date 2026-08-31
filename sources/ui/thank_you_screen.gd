@@ -1,11 +1,19 @@
 class_name ThankYouScreen
 extends MarginContainer
-## Last screen: hands the tester their CSV and asks them to email it over.
+## Last screen: offers to send the tester's report for them, and to hand them the
+## CSV if they would rather send it themselves.
+##
+## Nothing is downloaded on arrival. A tester who intends to press "Send my
+## report" has no use for a file, and dropping one in their downloads folder
+## unasked invites them to email a copy of something we already have. The
+## download is one button away and every failure path points back at it.
 
 signal back_requested
 signal load_another_requested
 
-const CONTACT_EMAIL: String = "contact@excellolab.org"
+## Where a report goes. Not the same as the load screen's contact address, which
+## is for a tester whose tool is broken rather than for the report itself.
+const REPORT_EMAIL: String = "developer@excellolab.org"
 const EMAIL_SUBJECT: String = "Kalulu language pack report"
 
 const MUTED_COLOR: Color = Color("8d99ae")
@@ -35,6 +43,9 @@ var _file_name: String = ""
 ## Where the report was written, on the platforms that write it to a folder.
 ## Empty in a browser, where the file goes wherever downloads go.
 var _saved_path: String = ""
+## Whether the tester has actually been handed the file yet. False on arrival,
+## since the report is no longer delivered before it is asked for.
+var _delivered: bool = false
 
 
 func _ready() -> void:
@@ -72,7 +83,7 @@ func _ready() -> void:
 	column.add_child(_build_send_section())
 
 	_manual_heading = Label.new()
-	_manual_heading.text = "…or send it yourself, to %s" % CONTACT_EMAIL
+	_manual_heading.text = "…or send it yourself, to %s" % REPORT_EMAIL
 	_manual_heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_manual_heading.add_theme_font_size_override("font_size", 18)
 	_manual_heading.add_theme_color_override("font_color", ACCENT_COLOR)
@@ -87,8 +98,8 @@ func _ready() -> void:
 	# In a browser the file is downloaded; everywhere else it is written to a
 	# folder, and calling that "downloading" would send the tester looking in
 	# the wrong place.
-	_download_button.text = "Download the report again" if OS.has_feature("web") \
-			else "Save the report again"
+	_download_button.text = "Download the report" if OS.has_feature("web") \
+			else "Save the report"
 	_download_button.custom_minimum_size = Vector2(240, 48)
 	_download_button.pressed.connect(_deliver_csv)
 	buttons.add_child(_download_button)
@@ -223,7 +234,9 @@ func _on_send_failed(message: String) -> void:
 	_send_status.text = "%s Your report is still saved, and the buttons below still work." % message
 
 
-## Builds the CSV for `store` and starts the download.
+## Builds the CSV for `store` and shows the ways of getting it to us. The report
+## is held in memory only: nothing is written or downloaded until the tester asks
+## for it.
 func present(store: ReportStore) -> void:
 	_store = store
 	if not is_node_ready():
@@ -247,6 +260,14 @@ func present(store: ReportStore) -> void:
 
 	_download_button.visible = true
 	_mail_button.visible = true
+	# Both belong to a file that does not exist yet: _deliver_csv() is what
+	# creates it and what makes these meaningful, and the tester has to ask.
+	# Reset them here too, or coming back a second time shows the first visit's
+	# path over a report that has since changed.
+	_reveal_button.visible = false
+	_delivery_note.text = ""
+	_saved_path = ""
+	_delivered = false
 	# Reset rather than reuse: the tester may have come back from "Back to
 	# checking" having flagged more entries, and a stale "Sent — thank you"
 	# above a newer report would be a lie.
@@ -257,9 +278,9 @@ func present(store: ReportStore) -> void:
 	_send_status.remove_theme_color_override("font_color")
 	_send_status.text = ""
 	_body.text = "Thank you for the time you spent helping us find bugs. "
-	_body.text += "Your report lists %d problem%s and has been saved as %s." % [
-		count, "" if count == 1 else "s", _file_name]
-	_deliver_csv()
+	_body.text += "Your report lists %d problem%s. Send it below, or take the " % [
+		count, "" if count == 1 else "s"]
+	_body.text += "file and email it yourself — whichever you prefer."
 
 
 ## In a browser this offers the file as a download. On desktop there is nowhere
@@ -267,6 +288,7 @@ func present(store: ReportStore) -> void:
 func _deliver_csv() -> void:
 	if _csv.is_empty():
 		return
+	_delivered = true
 	if OS.has_feature("web"):
 		JavaScriptBridge.download_buffer(_csv, _file_name, "text/csv")
 		return
@@ -295,7 +317,15 @@ func _on_reveal_pressed() -> void:
 	OS.shell_show_in_file_manager(_saved_path, true)
 
 
+## Writing the email means attaching the report, so make sure the tester has it.
+## Nothing is downloaded on arrival any more, so pressing this first would
+## otherwise open a message announcing an attachment that does not exist. This
+## counts as asking for the file, so delivering it here is not the unprompted
+## download that was removed.
 func _on_mail_pressed() -> void:
+	if not _delivered:
+		_deliver_csv()
+
 	var body: String = "Hello,\n\nHere is my report for the %s language pack" % _store.locale
 	if not _store.pack_version.is_empty():
 		body += " (version %s)" % _store.pack_version
@@ -304,7 +334,7 @@ func _on_mail_pressed() -> void:
 	# mailto: carries the subject and body as query values, so both have to be
 	# percent-encoded — the body has newlines in it.
 	OS.shell_open("mailto:%s?subject=%s&body=%s" % [
-		CONTACT_EMAIL,
+		REPORT_EMAIL,
 		("%s — %s" % [EMAIL_SUBJECT, _store.locale]).uri_encode(),
 		body.uri_encode(),
 	])

@@ -66,7 +66,7 @@ func _ready() -> void:
 	footer.add_child(stop_button)
 
 	_finish_button = Button.new()
-	_finish_button.text = "Finish and download my report"
+	_finish_button.text = "Finish testing and send report"
 	_finish_button.custom_minimum_size = Vector2(280, 44)
 	_finish_button.pressed.connect(func () -> void: finish_requested.emit())
 	footer.add_child(_finish_button)
@@ -257,5 +257,5 @@ func _refresh_counter() -> void:
 	var total: int = _store.count()
 	_counter.text = "" if total == 0 else "%d problem%s reported" % [
 		total, "" if total == 1 else "s"]
-	_finish_button.text = "Finish and download my report" if total == 0 \
-			else "Finish and download my report (%d)" % total
+	_finish_button.text = "Finish testing and send report" if total == 0 \
+			else "Finish testing and send report (%d)" % total

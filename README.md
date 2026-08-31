@@ -8,7 +8,8 @@ is wrong.
 No account, and nothing about the pack ever leaves the machine. The tester picks
 a language, the pack downloads itself, they work through the four lists, and one
 press sends the report to us — or they take the CSV and email it to
-`contact@excellolab.org` themselves.
+`developer@excellolab.org` themselves. The report is only ever written to disk
+when they ask for it, so choosing to send costs them no stray file.
 
 Part of the [Kalulu](https://github.com/Excello-Recherche-Education/Kalulu)
 project by [Excello Recherche & Éducation](https://github.com/Excello-Recherche-Education).
@@ -34,12 +35,16 @@ project by [Excello Recherche & Éducation](https://github.com/Excello-Recherche
    each listing every entry with its lesson number, a ▶ button for its
    recording, a box to tick when something is wrong, and a field to say what.
    Entries whose recording is absent from the pack are marked `missing` in red.
-5. **Send the report.** *Finish and download my report* produces a CSV and a
-   thank-you screen. **Send my report** delivers it to us in one press, with
-   optional name and email so we can reply. The CSV download and a `mailto:`
-   link are still there, and are what the tester falls back on if sending fails
-   — which is why the report is downloaded before the button is offered, not
-   instead of it.
+5. **Send the report.** *Finish testing and send report* builds the CSV and
+   opens a thank-you screen. **Send my report** delivers it to us in one press,
+   with optional name and email so we can reply. A *Download the report* button
+   and a `mailto:` link sit below, for a tester who would rather send it
+   themselves and as the fallback when sending fails.
+
+   Nothing is downloaded on arrival. A tester who means to press *Send my
+   report* has no use for a file, and putting one in their downloads folder
+   unasked invites them to email a second copy of what we already have. The
+   download is one press away, and every failure message points at it.
 
    This is the only time the checker talks to a server, and only the report is
    sent: never the pack, and nothing else from the tester's computer. It posts
