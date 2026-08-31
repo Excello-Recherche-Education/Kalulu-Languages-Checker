@@ -15,8 +15,15 @@ behind the design. This file covers only what is easy to get wrong.
 - **Engine**: Godot 4.7.1 (GDScript)
 - **Target**: Web, single-threaded, GDExtension support on
 - **SQLite**: `godot-sqlite` 4.7, vendored in `addons/`
-- **No backend.** Packs are downloaded straight from S3 by the page itself.
-  There is no API, no account, no upload.
+- **Almost no backend.** Packs are downloaded straight from S3 by the page
+  itself, and there is no account. Exactly one server call exists, it is
+  optional, and the tester starts it: `POST /checker_report` sends the finished
+  report so they do not have to email it by hand. See `report_sender.gd` here
+  and `handlers/checker_report.py` in Kalulu-Backend.
+
+  **Nothing about the pack is ever uploaded**, and that claim is made on screen
+  — keep it true. What leaves the machine is the report the tester wrote, and
+  only when they press the button. Their name and address are optional.
 
 ## Publishing a pack for testers
 
@@ -66,6 +73,44 @@ anonymous `ListBucket` scoped to the same prefix. The root packs and
   filesystem is held in memory, so five packs would mean carrying ~295 MB of it.
   Downloading a different locale replaces the stored one. Reports are unaffected:
   `ReportStore` keys them by locale and they outlive the archive.
+- **The posted report loses its byte order mark; the endpoint puts it back.**
+  `ReportCsv.build()` writes a UTF-8 BOM because Excel on Windows otherwise
+  reads the file as Latin-1 and mangles every accented word — which on these
+  packs is most of them. But `PackedByteArray.get_string_from_utf8()` **strips a
+  leading BOM**, so what `ReportSender` posts has none even though the
+  downloaded copy does. `handlers/checker_report.py` normalises the attachment
+  to carry exactly one. Do not "fix" this by prepending one in the checker: the
+  two ship separately and you would get two. There is a contract test for it,
+  built from a payload this checker really produced —
+  `tests/report_payload_dump.gd` regenerates the fixture.
+- **The API's stage name goes in the path, not just the host.** The custom
+  domains map with an empty key onto routes declared `ANY /prod/{proxy+}` and
+  `ANY /dev/{proxy+}`, so the working addresses are
+  `https://api.kalulu.org/**prod**/<route>` and
+  `https://dev.api.kalulu.org/**dev**/<route>`. Drop the segment and API Gateway
+  answers its own `{"message":"Not Found"}` without ever reaching the Lambda —
+  which reads exactly like a route that was never deployed, and sent me looking
+  in the wrong place. When it *does* reach the Lambda you get the Lambda's own
+  wording instead: `{"error": "Path /… not found in routes"}`. That difference
+  is the quickest way to tell a bad URL from a missing route.
+- **Reports go to the *dev* stage, on purpose.** The checker is an internal tool
+  for a handful of volunteers, not part of the product, so it has no business
+  depending on a production deploy or adding traffic to the stack the game
+  relies on. The practical effect: merging and deploying **DEV** is all it takes
+  to make the button work — promoting to PROD is not required. The cost is that
+  `dev` tracks `$LATEST`, so a deploy mid-review can cost one send; the download
+  is still sitting there when it does.
+
+  `?api=prod` switches to production, should the tool ever need to outlive dev.
+  Only the exact word `prod` does anything and both addresses are constants in
+  `ReportSender` — a query parameter that could name a host would turn a crafted
+  link into a way of collecting other people's reports. On desktop the same
+  choice is `-- --api prod`.
+- **Sending must never replace the download.** If the endpoint is unreachable —
+  offline, not deployed yet, backend down — the tester still has the CSV and the
+  address. A failure is the moment they are most likely to close the tab
+  believing the work is gone, so the failure message points back at the
+  buttons that still work.
 - **Writing a pack and persisting it are not the same moment.**
   `JavaScriptBridge.force_fs_sync()` is asynchronous and there is no way to await
   it from GDScript — the completion flag lives on `GodotFS._syncing`, inside the

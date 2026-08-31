@@ -5,9 +5,10 @@ language pack — the grapheme-phoneme pairs, syllables, words and sentences,
 together with the recordings the game plays for them — and report anything that
 is wrong.
 
-No account, no server, nothing uploaded. The tester picks a language, the pack
-downloads itself, and they work through the four lists and leave with a CSV
-report to email to `contact@excellolab.org`.
+No account, and nothing about the pack ever leaves the machine. The tester picks
+a language, the pack downloads itself, they work through the four lists, and one
+press sends the report to us — or they take the CSV and email it to
+`contact@excellolab.org` themselves.
 
 Part of the [Kalulu](https://github.com/Excello-Recherche-Education/Kalulu)
 project by [Excello Recherche & Éducation](https://github.com/Excello-Recherche-Education).
@@ -34,7 +35,17 @@ project by [Excello Recherche & Éducation](https://github.com/Excello-Recherche
    recording, a box to tick when something is wrong, and a field to say what.
    Entries whose recording is absent from the pack are marked `missing` in red.
 5. **Send the report.** *Finish and download my report* produces a CSV and a
-   thank-you screen with a `mailto:` link.
+   thank-you screen. **Send my report** delivers it to us in one press, with
+   optional name and email so we can reply. The CSV download and a `mailto:`
+   link are still there, and are what the tester falls back on if sending fails
+   — which is why the report is downloaded before the button is offered, not
+   instead of it.
+
+   This is the only time the checker talks to a server, and only the report is
+   sent: never the pack, and nothing else from the tester's computer. It posts
+   to the **dev** API — this is an internal tool, so it has no business
+   depending on a production deploy or adding traffic to the stack the game
+   relies on. Opening the page as `?api=prod` switches it.
 
 Opening a `.zip` by hand still works, from the bottom of the first screen or by
 dragging it onto the page. It is the way in when the storage cannot be reached,
@@ -161,7 +172,8 @@ sources/
 │   └── language_data.gd       language.db -> the four lists
 ├── report/
 │   ├── report_store.gd        what the tester flagged, saved as they go
-│   └── report_csv.gd          the CSV
+│   ├── report_csv.gd          the CSV
+│   └── report_sender.gd       sends it to us, so they need not email it
 ├── ui/                        the three screens, the list widget, icons
 ├── audio/sound_queue.gd       plays recordings out of the ZIP
 └── utils/unicode_normalizer.gd  copied from the frontend, keep in sync

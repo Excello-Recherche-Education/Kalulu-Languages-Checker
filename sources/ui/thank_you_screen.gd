@@ -10,6 +10,8 @@ const EMAIL_SUBJECT: String = "Kalulu language pack report"
 
 const MUTED_COLOR: Color = Color("8d99ae")
 const ACCENT_COLOR: Color = Color("8ecae6")
+const SUCCESS_COLOR: Color = Color("95d5b2")
+const ERROR_COLOR: Color = Color("ef767a")
 
 var _title: Label = null
 var _body: Label = null
@@ -18,6 +20,14 @@ var _download_button: Button = null
 var _reveal_button: Button = null
 var _mail_button: Button = null
 var _back_button: Button = null
+
+var _send_section: VBoxContainer = null
+var _name_field: LineEdit = null
+var _email_field: LineEdit = null
+var _send_button: Button = null
+var _send_status: Label = null
+var _sender: ReportSender = null
+var _manual_heading: Label = null
 
 var _store: ReportStore = null
 var _csv: PackedByteArray = PackedByteArray()
@@ -59,12 +69,14 @@ func _ready() -> void:
 	_delivery_note.add_theme_color_override("font_color", MUTED_COLOR)
 	column.add_child(_delivery_note)
 
-	var email_line: Label = Label.new()
-	email_line.text = "Please send the file to %s" % CONTACT_EMAIL
-	email_line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	email_line.add_theme_font_size_override("font_size", 20)
-	email_line.add_theme_color_override("font_color", ACCENT_COLOR)
-	column.add_child(email_line)
+	column.add_child(_build_send_section())
+
+	_manual_heading = Label.new()
+	_manual_heading.text = "…or send it yourself, to %s" % CONTACT_EMAIL
+	_manual_heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_manual_heading.add_theme_font_size_override("font_size", 18)
+	_manual_heading.add_theme_color_override("font_color", ACCENT_COLOR)
+	column.add_child(_manual_heading)
 
 	var buttons: HBoxContainer = HBoxContainer.new()
 	buttons.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -117,6 +129,100 @@ func _ready() -> void:
 	column.add_child(note)
 
 
+## The one-press route: the report goes straight to the team.
+##
+## The name and address are asked for rather than required. Without them a
+## report arrives anonymous and cannot be followed up, which is a real loss when
+## an entry is ambiguous — but requiring them would mean collecting personal
+## details from every volunteer to file a bug, and that is the worse trade. The
+## note under the fields says plainly what they are for.
+func _build_send_section() -> VBoxContainer:
+	_send_section = VBoxContainer.new()
+	_send_section.add_theme_constant_override("separation", 8)
+
+	var heading: Label = Label.new()
+	heading.text = "Send it to us"
+	heading.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	heading.add_theme_font_size_override("font_size", 20)
+	heading.add_theme_color_override("font_color", ACCENT_COLOR)
+	_send_section.add_child(heading)
+
+	var fields: HBoxContainer = HBoxContainer.new()
+	fields.alignment = BoxContainer.ALIGNMENT_CENTER
+	fields.add_theme_constant_override("separation", 12)
+	_send_section.add_child(fields)
+
+	_name_field = LineEdit.new()
+	_name_field.placeholder_text = "Your name (optional)"
+	_name_field.custom_minimum_size = Vector2(260, 40)
+	fields.add_child(_name_field)
+
+	_email_field = LineEdit.new()
+	_email_field.placeholder_text = "Your email (optional)"
+	_email_field.custom_minimum_size = Vector2(260, 40)
+	# Enter in either field sends, which is what a form conditions people to.
+	_name_field.text_submitted.connect(func (_text: String) -> void: _on_send_pressed())
+	_email_field.text_submitted.connect(func (_text: String) -> void: _on_send_pressed())
+	fields.add_child(_email_field)
+
+	var send_row: HBoxContainer = HBoxContainer.new()
+	send_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	_send_section.add_child(send_row)
+
+	_send_button = Button.new()
+	_send_button.text = "Send my report"
+	_send_button.custom_minimum_size = Vector2(240, 48)
+	_send_button.pressed.connect(_on_send_pressed)
+	send_row.add_child(_send_button)
+
+	var privacy: Label = Label.new()
+	privacy.text = ("Only the report is sent — never the pack, and nothing else from "
+			+ "your computer. Your name and address are optional, and are used to "
+			+ "reply to you about this report and nothing else.")
+	privacy.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	privacy.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	privacy.add_theme_color_override("font_color", MUTED_COLOR)
+	_send_section.add_child(privacy)
+
+	_send_status = Label.new()
+	_send_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_send_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_send_status.custom_minimum_size.y = 24
+	_send_section.add_child(_send_status)
+
+	_sender = ReportSender.new()
+	_sender.sent.connect(_on_sent)
+	_sender.failed.connect(_on_send_failed)
+	add_child(_sender)
+
+	return _send_section
+
+
+func _on_send_pressed() -> void:
+	if _csv.is_empty() or _sender.is_busy():
+		return
+	_send_button.disabled = true
+	_send_status.remove_theme_color_override("font_color")
+	_send_status.text = "Sending…"
+	_sender.send(_store, _csv, _name_field.text, _email_field.text)
+
+
+func _on_sent() -> void:
+	_send_button.disabled = false
+	_send_button.text = "Send it again"
+	_send_status.add_theme_color_override("font_color", SUCCESS_COLOR)
+	_send_status.text = "Sent — thank you. There is nothing else to do."
+
+
+## The download is deliberately left in place and pointed at: a failure here is
+## the one moment the tester is most likely to close the tab believing the work
+## is gone.
+func _on_send_failed(message: String) -> void:
+	_send_button.disabled = false
+	_send_status.add_theme_color_override("font_color", ERROR_COLOR)
+	_send_status.text = "%s Your report is still saved, and the buttons below still work." % message
+
+
 ## Builds the CSV for `store` and starts the download.
 func present(store: ReportStore) -> void:
 	_store = store
@@ -134,11 +240,22 @@ func present(store: ReportStore) -> void:
 		_download_button.visible = false
 		_reveal_button.visible = false
 		_mail_button.visible = false
+		_send_section.visible = false
+		_manual_heading.visible = false
 		_delivery_note.text = ""
 		return
 
 	_download_button.visible = true
 	_mail_button.visible = true
+	# Reset rather than reuse: the tester may have come back from "Back to
+	# checking" having flagged more entries, and a stale "Sent — thank you"
+	# above a newer report would be a lie.
+	_send_section.visible = true
+	_manual_heading.visible = true
+	_send_button.disabled = false
+	_send_button.text = "Send my report"
+	_send_status.remove_theme_color_override("font_color")
+	_send_status.text = ""
 	_body.text = "Thank you for the time you spent helping us find bugs. "
 	_body.text += "Your report lists %d problem%s and has been saved as %s." % [
 		count, "" if count == 1 else "s", _file_name]
