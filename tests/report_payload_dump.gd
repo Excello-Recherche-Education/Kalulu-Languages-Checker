@@ -20,7 +20,8 @@ func _initialize() -> void:
 	store.set_comment("GP", "r-R", "the recording says something else")
 	store.set_comment("Word", "café", "spelling is wrong, should be \"cafe\"")
 	store.set_comment("Syllable", "chè", "much too quiet to hear")
-	store.set_flagged("Sentence", "Mamá me ama.", true)
+	# A tick with no explanation, which the interface allows.
+	store.set_flagged("Word", "Mamá", true)
 
 	var csv: PackedByteArray = ReportCsv.build(store)
 	var payload: Dictionary = ReportSender.build_payload(

@@ -1,12 +1,11 @@
 # Kalulu Language Pack Checker
 
 A small web tool that lets volunteer testers review the contents of a Kalulu
-language pack — the grapheme-phoneme pairs, syllables, words and sentences,
-together with the recordings the game plays for them — and report anything that
-is wrong.
+language pack — the grapheme-phoneme pairs, syllables and words, together with
+the recordings the game plays for them — and report anything that is wrong.
 
 No account, and nothing about the pack ever leaves the machine. The tester picks
-a language, the pack downloads itself, they work through the four lists, and one
+a language, the pack downloads itself, they work through the three lists, and one
 press sends the report to us — or they take the CSV and email it to
 `developer@excellolab.org` themselves. The report is only ever written to disk
 when they ask for it, so choosing to send costs them no stray file.
@@ -31,10 +30,18 @@ project by [Excello Recherche & Éducation](https://github.com/Excello-Recherche
    alongside it. When a newer one has been put up, the row says *new version
    available* and the button becomes **Update**. Nothing downloads on its own —
    an update is always the tester's decision.
-4. **Check it.** Four tabs — **GP**, **Syllables**, **Words**, **Sentences** —
-   each listing every entry with its lesson number, a ▶ button for its
-   recording, a box to tick when something is wrong, and a field to say what.
-   Entries whose recording is absent from the pack are marked `missing` in red.
+4. **Check it.** Three tabs — **GP**, **Syllables**, **Words** — each listing
+   every entry with its lesson number, a ▶ button for its recording, a box to
+   tick when something is wrong, and a field to say what. **The spacebar plays
+   the next sound**, which is how a tester gets through a list of 2500 words
+   without reaching for the mouse on every row; a recording already heard keeps
+   a dimmed ▶ so it is clear where they are up to.
+
+   By default the list shows only the entries the pack has a recording for —
+   there is nothing to listen to on the others, and a missing recording is for
+   the team to fix rather than for a tester to review. The **Audio** dropdown
+   asks for the missing ones (marked `missing` in red) or for all of them, and
+   the count under the list always names how many the pack is short of.
 5. **Send the report.** *Finish testing and send report* builds the CSV and
    opens a thank-you screen. **Send my report** delivers it to us in one press,
    with optional name and email so we can reply. A *Download the report* button
@@ -147,9 +154,10 @@ media the checker does not use. Handling that in a browser shapes the design:
   different sounds. A case-insensitive fallback would play the other pair's
   recording, and a tester would hear something plausible and pass an entry whose
   own recording is in fact missing.
-- **Sentences have no recording of their own.** The game reads them word by
-  word, so the checker plays the word recordings in order and says how many
-  there are.
+- **Sentences are not reviewed.** A sentence has no recording of its own — the
+  game reads it word by word — so there is never anything to listen to, and
+  every word it is made of is already in the Words list. `language_data.gd`
+  therefore does not read the `Sentences` table at all.
 - **No threads.** Not needing them keeps the build out of cross-origin isolated
   mode, which is what makes it hostable anywhere. See HOW-TO-UPLOAD.md §6.
 - **The file button is an HTML input in disguise.** Browsers only open a file
@@ -174,12 +182,13 @@ sources/
 │   └── available_packs.gd     the downloadable list, read from S3
 ├── data/
 │   ├── checkable.gd           one reviewable entry
-│   └── language_data.gd       language.db -> the four lists
+│   └── language_data.gd       language.db -> the three lists
 ├── report/
 │   ├── report_store.gd        what the tester flagged, saved as they go
 │   ├── report_csv.gd          the CSV
 │   └── report_sender.gd       sends it to us, so they need not email it
-├── ui/                        the three screens, the list widget, icons
+├── ui/                        the three screens, the list widget, icons,
+│                              the rules between the list's columns
 ├── audio/sound_queue.gd       plays recordings out of the ZIP
 └── utils/unicode_normalizer.gd  copied from the frontend, keep in sync
 ```
@@ -205,13 +214,12 @@ way to see what a pack is missing:
 GP          118 entries     92 playable     26 missing recording
 Syllable    223 entries    223 playable      0 missing recording
 Word       2503 entries   2410 playable     93 missing recording
-Sentence    252 entries    252 playable     67 missing recording
 ```
 
 and names anything it hid from the tester, so a fault in a pack is still visible:
 
 ```
-note  Sentence: 2 repeated (il a gagné un trophée au tennis, …) — hidden from the tester
+note  Word: 1 blank, 2 repeated (lama, sali) — hidden from the tester
 ```
 
 **The download path**, against the real storage — lists the packs, downloads the

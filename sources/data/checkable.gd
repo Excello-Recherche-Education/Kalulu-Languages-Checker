@@ -1,7 +1,7 @@
 class_name Checkable
 extends RefCounted
-## One entry a tester can review: a grapheme-phoneme pair, a syllable, a word
-## or a sentence, together with the sound(s) the game plays for it.
+## One entry a tester can review: a grapheme-phoneme pair, a syllable or a word,
+## together with the recording the game plays for it.
 
 ## Category label, also written to the CSV report. See LanguageData.CATEGORY_*.
 var category: String = ""
@@ -9,11 +9,11 @@ var category: String = ""
 var text: String = ""
 ## Lesson the entry belongs to, 0 when the pack does not say.
 var lesson: int = 0
-## Sound files to play, in order, relative to language_sounds/. A word has one,
-## a sentence has one per word, an entry with no recording has none.
+## The recording to play, relative to language_sounds/ — one name, or none when
+## the pack does not carry it. Stays a list because SoundQueue plays a list.
 var sound_names: PackedStringArray = PackedStringArray()
-## Sounds the pack should contain but does not. Shown to the tester, because a
-## missing recording is itself something worth reporting.
+## The recording the pack should carry and does not. Exactly one of these two is
+## filled: a missing recording is itself something worth reporting.
 var missing_sound_names: PackedStringArray = PackedStringArray()
 
 

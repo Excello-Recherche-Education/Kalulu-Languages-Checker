@@ -40,30 +40,44 @@ func _init() -> void:
 		await process_frame
 	await _capture("03_checker_words")
 
+	# Listen to a few the way a tester on the spacebar would, so the played and
+	# unplayed play buttons can be compared.
+	var words: CheckList = checker._current_list()
+	for _i: int in 6:
+		words.play_next()
+	for _i: int in 10:
+		await process_frame
+	await _capture("04_checker_played")
+
 	# Flag a few entries the way a tester would, then look at the report.
 	var store: ReportStore = _main._store
 	var lists: Array[CheckList] = checker._lists
 	for list: CheckList in lists:
-		if list._entries.is_empty():
-			continue
-		store.set_flagged(list.category, list._entries[0].text, true)
-		store.set_comment(list.category, list._entries[0].text,
-				"the recording is much too quiet, and it sounds like another word")
+		for entry: Checkable in list._entries:
+			# One the list is showing, so the flagged row is in the picture.
+			if not entry.has_sound():
+				continue
+			store.set_flagged(list.category, entry.text, true)
+			store.set_comment(list.category, entry.text,
+					"the recording is much too quiet, and it sounds like another word")
+			break
 		list.rebuild()
 	for _i: int in 10:
 		await process_frame
-	await _capture("04_checker_reported")
+	await _capture("05_checker_reported")
 
-	tabs.current_tab = 3
-	checker._only_missing.button_pressed = true
+	# The entries whose recording the pack does not carry, which the list hides
+	# until it is asked for them.
+	checker._audio_select.select(1)
+	checker._apply_filters()
 	for _i: int in 10:
 		await process_frame
-	await _capture("05_sentences_missing_filter")
+	await _capture("06_words_missing_filter")
 
 	_main._on_finish_requested()
 	for _i: int in 30:
 		await process_frame
-	await _capture("06_thank_you")
+	await _capture("07_thank_you")
 
 	print("Saved screenshots to %s" % _out)
 	quit()

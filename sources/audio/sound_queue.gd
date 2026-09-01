@@ -1,10 +1,10 @@
 class_name SoundQueue
 extends AudioStreamPlayer
-## Plays the sound(s) of one entry, straight out of the pack archive.
+## Plays the sound of one entry, straight out of the pack archive.
 ##
-## A grapheme-phoneme pair, a syllable or a word has a single recording. A
-## sentence has none of its own, so the game reads it word by word and this
-## plays those word recordings back to back.
+## Every entry the checker reviews has a single recording, so the queue holds one
+## name in practice. It stays a queue because it costs nothing and a tester on
+## the spacebar asks for a new sound before the last has finished.
 
 signal queue_finished
 

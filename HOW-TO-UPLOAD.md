@@ -385,8 +385,9 @@ Something along these lines:
 > **https://kalulu.excellolab.org/lang-tester/**
 >
 > The page explains it in two steps: download the language pack for your
-> language, then open that file in the page. You will get four lists — letters
-> and sounds, syllables, words, sentences — each with a play button.
+> language, then open that file in the page. You will get three lists — letters
+> and sounds, syllables, words — each with a play button. The spacebar plays the
+> next one, so you can go down a list without using the mouse.
 >
 > When something is wrong (the recording says a different word, the spelling is
 > wrong, the sound is silent or cut off), tick the box on that line and write

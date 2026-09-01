@@ -1,7 +1,11 @@
 class_name LanguageData
 extends RefCounted
-## Reads a pack's language.db and turns it into the four lists of entries the
+## Reads a pack's language.db and turns it into the three lists of entries the
 ## tester reviews.
+##
+## Sentences are deliberately absent: a sentence has no recording of its own —
+## the game reads it word by word — so there is never anything to listen to, and
+## every word it is made of is already reviewed in the Words list.
 ##
 ## language.db is the source of truth, not the CSV exports shipped next to it:
 ## some packs have been released with empty words_list.csv / syllables_list.csv,
@@ -10,13 +14,11 @@ extends RefCounted
 const CATEGORY_GP: String = "GP"
 const CATEGORY_SYLLABLE: String = "Syllable"
 const CATEGORY_WORD: String = "Word"
-const CATEGORY_SENTENCE: String = "Sentence"
 
 const CATEGORIES: Array[String] = [
 	CATEGORY_GP,
 	CATEGORY_SYLLABLE,
 	CATEGORY_WORD,
-	CATEGORY_SENTENCE,
 ]
 
 ## What read_all() left out, per category: {"blank": int, "repeated": [text…]}.
@@ -55,13 +57,10 @@ func close() -> void:
 ## Reads every category. Returns category name -> Array[Checkable].
 func read_all() -> Dictionary[String, Array]:
 	var gp_lessons: Dictionary[int, int] = _read_gp_lessons()
-	var word_texts: Dictionary[int, String] = _read_id_to_text("Words", "Word")
-
 	var word_lessons: Dictionary[int, int] = _read_owner_lessons(
 			"GPsInWords", "WordID", gp_lessons)
 	var syllable_lessons: Dictionary[int, int] = _read_owner_lessons(
 			"GPsInSyllables", "SyllableID", gp_lessons)
-	var sentence_words: Dictionary[int, Array] = _read_sentence_words()
 
 	skipped.clear()
 	var result: Dictionary[String, Array] = {}
@@ -70,14 +69,11 @@ func read_all() -> Dictionary[String, Array]:
 			CATEGORY_SYLLABLE, "Syllables", "Syllable", syllable_lessons))
 	result[CATEGORY_WORD] = _reviewable(CATEGORY_WORD, _build_texts(
 			CATEGORY_WORD, "Words", "Word", word_lessons))
-	result[CATEGORY_SENTENCE] = _reviewable(CATEGORY_SENTENCE, _build_sentences(
-			sentence_words, word_texts, word_lessons))
 	return result
 
 
 ## Drops what a tester cannot act on: entries with no text, and repeats of a
-## text already in the list. Every pack but pt_BR carries the same sentence
-## twice, and the Spanish packs carry one empty sentence.
+## text already in the list. Real packs carry both.
 ##
 ## Dropping repeats also keeps one row per report. A report is filed against the
 ## text, so two rows sharing a text would share one report, and ticking one
@@ -142,31 +138,6 @@ func _read_owner_lessons(
 	return lessons
 
 
-func _read_id_to_text(table: String, text_column: String) -> Dictionary[int, String]:
-	var texts: Dictionary[int, String] = {}
-	var rows: Array = _query(
-			"SELECT ID, %s AS Text FROM %s" % [text_column, table])
-	for row: Dictionary in rows:
-		texts[int(row.ID)] = str(row.Text)
-	return texts
-
-
-## Sentence id -> word ids, in reading order.
-func _read_sentence_words() -> Dictionary[int, Array]:
-	var words: Dictionary[int, Array] = {}
-	var rows: Array = _query("""
-		SELECT SentenceID, WordID
-		FROM WordsInSentences
-		ORDER BY SentenceID, Position
-	""")
-	for row: Dictionary in rows:
-		var sentence_id: int = int(row.SentenceID)
-		if not words.has(sentence_id):
-			words[sentence_id] = []
-		words[sentence_id].append(int(row.WordID))
-	return words
-
-
 func _build_gps(gp_lessons: Dictionary[int, int]) -> Array[Checkable]:
 	var entries: Array[Checkable] = []
 	var rows: Array = _query("SELECT ID, Grapheme, Phoneme FROM GPs")
@@ -202,30 +173,8 @@ func _build_texts(
 	return entries
 
 
-## A sentence has no recording of its own: the game reads it word by word, so
-## the checker plays the word sounds one after the other.
-func _build_sentences(
-		sentence_words: Dictionary[int, Array],
-		word_texts: Dictionary[int, String],
-		word_lessons: Dictionary[int, int]) -> Array[Checkable]:
-	var entries: Array[Checkable] = []
-	var rows: Array = _query("SELECT ID, Sentence FROM Sentences")
-	for row: Dictionary in rows:
-		var sentence_id: int = int(row.ID)
-		var entry: Checkable = Checkable.new()
-		entry.category = CATEGORY_SENTENCE
-		entry.text = str(row.Sentence)
-		for word_id: int in sentence_words.get(sentence_id, [] as Array):
-			entry.lesson = maxi(entry.lesson, word_lessons.get(word_id, 0))
-			if not word_texts.has(word_id):
-				continue
-			_assign_sound(entry, PackArchive.text_sound_name(word_texts[word_id]))
-		entries.append(entry)
-	_sort(entries)
-	return entries
-
-
-## Records a sound as playable or as missing, depending on what the pack holds.
+## Records the entry's one recording as playable or as missing, depending on what
+## the pack holds. Every entry has exactly one, present or not.
 func _assign_sound(entry: Checkable, sound_name: String) -> void:
 	if _archive and _archive.has_sound(sound_name):
 		entry.sound_names.append(sound_name)

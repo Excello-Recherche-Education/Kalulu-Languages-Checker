@@ -25,7 +25,7 @@ var _tabs: TabContainer = null
 var _search: LineEdit = null
 var _lesson_select: OptionButton = null
 var _only_problems: CheckBox = null
-var _only_missing: CheckBox = null
+var _audio_select: OptionButton = null
 var _finish_button: Button = null
 var _sound_queue: SoundQueue = null
 var _now_playing: Label = null
@@ -59,6 +59,11 @@ func _ready() -> void:
 	_now_playing.add_theme_color_override("font_color", MUTED_COLOR)
 	footer.add_child(_now_playing)
 
+	var hint: Label = Label.new()
+	hint.text = "Spacebar plays the next sound"
+	hint.add_theme_color_override("font_color", MUTED_COLOR)
+	footer.add_child(hint)
+
 	var stop_button: Button = Button.new()
 	stop_button.text = "Stop sound"
 	stop_button.icon = Icons.stop(16, Color("e8eef2"))
@@ -74,6 +79,32 @@ func _ready() -> void:
 	_sound_queue = SoundQueue.new()
 	_sound_queue.queue_finished.connect(func () -> void: _now_playing.text = "")
 	add_child(_sound_queue)
+
+
+## Plays the next sound in the visible list. Testers listen to thousands of
+## recordings in a row, and reaching for the mouse on each one is the slowest
+## part of the job.
+func _input(event: InputEvent) -> void:
+	if not visible:
+		return
+	var key: InputEventKey = event as InputEventKey
+	if key == null or not key.pressed or key.echo:
+		return
+	if key.keycode != KEY_SPACE or key.get_modifiers_mask() != 0:
+		return
+	# A tester typing in the search box, or writing what is wrong with an entry,
+	# must get a space — those fields keep the key for themselves.
+	var focused: Control = get_viewport().gui_get_focus_owner()
+	if focused is LineEdit or focused is TextEdit:
+		return
+
+	get_viewport().set_input_as_handled()
+	var list: CheckList = _current_list()
+	if list == null:
+		return
+	if not list.play_next():
+		_sound_queue.stop_all()
+		_now_playing.text = "End of the list — nothing left to play below."
 
 
 ## Fills the screen with a pack. Safe to call before or after _ready().
@@ -166,10 +197,22 @@ func _build_filters() -> Control:
 	_only_problems.toggled.connect(func (_pressed: bool) -> void: _apply_filters())
 	row.add_child(_only_problems)
 
-	_only_missing = CheckBox.new()
-	_only_missing.text = "Only missing recordings"
-	_only_missing.toggled.connect(func (_pressed: bool) -> void: _apply_filters())
-	row.add_child(_only_missing)
+	var audio_label: Label = Label.new()
+	audio_label.text = "Audio"
+	audio_label.add_theme_color_override("font_color", MUTED_COLOR)
+	row.add_child(audio_label)
+
+	# There is nothing to listen to on a row whose recording is missing, so those
+	# are left out until the tester asks for them. The team still wants to know
+	# which they are, which is what the other two choices are for.
+	_audio_select = OptionButton.new()
+	_audio_select.custom_minimum_size.x = 210
+	_audio_select.add_item("Only existing audio files", CheckList.AudioFilter.EXISTING)
+	_audio_select.add_item("Only missing audio files", CheckList.AudioFilter.MISSING)
+	_audio_select.add_item("All", CheckList.AudioFilter.ALL)
+	_audio_select.select(0)
+	_audio_select.item_selected.connect(func (_index: int) -> void: _apply_filters())
+	row.add_child(_audio_select)
 
 	var spacer: Control = Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -187,8 +230,6 @@ func _tab_title(category: String) -> String:
 			return "Syllables"
 		LanguageData.CATEGORY_WORD:
 			return "Words"
-		LanguageData.CATEGORY_SENTENCE:
-			return "Sentences"
 	return category
 
 
@@ -213,6 +254,12 @@ func _selected_lesson() -> int:
 	return _lesson_select.get_item_id(_lesson_select.selected)
 
 
+func _selected_audio_filter() -> CheckList.AudioFilter:
+	if _audio_select == null or _audio_select.selected < 0:
+		return CheckList.AudioFilter.EXISTING
+	return _audio_select.get_item_id(_audio_select.selected) as CheckList.AudioFilter
+
+
 func _current_list() -> CheckList:
 	var index: int = _tabs.current_tab
 	if index < 0 or index >= _lists.size():
@@ -231,7 +278,7 @@ func _apply_filters() -> void:
 			_search.text,
 			_selected_lesson(),
 			_only_problems.button_pressed,
-			_only_missing.button_pressed)
+			_selected_audio_filter())
 
 
 func _on_tab_changed(_index: int) -> void:
@@ -240,11 +287,7 @@ func _on_tab_changed(_index: int) -> void:
 
 
 func _on_play_requested(entry: Checkable) -> void:
-	if entry.sound_names.size() > 1:
-		_now_playing.text = "Playing %d recordings: %s" % [
-			entry.sound_names.size(), entry.text]
-	else:
-		_now_playing.text = "Playing: %s" % entry.text
+	_now_playing.text = "Playing: %s" % entry.text
 	_sound_queue.play_sounds(_archive, entry.sound_names)
 
 

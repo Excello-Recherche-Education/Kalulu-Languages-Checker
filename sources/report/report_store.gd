@@ -146,6 +146,11 @@ func load_saved() -> void:
 	for category: Variant in saved_reports:
 		if saved_reports[category] is not Dictionary:
 			continue
+		# A category the checker no longer reviews — Sentence, before its tab was
+		# removed. rows() would leave it out of the CSV, so counting it here
+		# would show a tester reports that never reach us.
+		if not LanguageData.CATEGORIES.has(str(category)):
+			continue
 		var entries: Dictionary = {}
 		for text: Variant in saved_reports[category]:
 			entries[str(text)] = str(saved_reports[category][text])

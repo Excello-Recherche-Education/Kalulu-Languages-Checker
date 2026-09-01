@@ -10,6 +10,15 @@ extends VBoxContainer
 signal play_requested(entry: Checkable)
 signal report_changed
 
+## Which entries to list, by whether the pack carries their recording. Testers
+## are here to listen, so the rows they cannot listen to are hidden by default —
+## a missing recording is a fault for the team to fix, not for them to review.
+enum AudioFilter {
+	EXISTING,
+	MISSING,
+	ALL,
+}
+
 const COLUMN_LESSON: int = 0
 const COLUMN_TEXT: int = 1
 const COLUMN_SOUND: int = 2
@@ -18,13 +27,23 @@ const COLUMN_COMMENT: int = 4
 const COLUMN_COUNT: int = 5
 
 const PLAY_BUTTON_ID: int = 0
+## Only one button is ever added to the sound cell, so it is always index 0.
+const PLAY_BUTTON_INDEX: int = 0
 
 const MISSING_SOUND_LABEL: String = "missing"
-const NO_SOUND_LABEL: String = "—"
 
 const PROBLEM_COLOR: Color = Color("ffd166")
 const MISSING_COLOR: Color = Color("ef767a")
 const MUTED_COLOR: Color = Color("8d99ae")
+const PLAY_COLOR: Color = Color("e8eef2")
+## Already listened to. Dimmer than the rest, so what is left to hear stands out.
+const PLAYED_COLOR: Color = Color("6b7688")
+
+## Big enough to see across a long list, which the Tree's own boxes are not.
+const CHECKBOX_SIZE: int = 20
+const CHECKBOX_BORDER_COLOR: Color = Color("b9c6d6")
+## The tick itself, cut out of the filled box: the page background colour.
+const CHECKBOX_MARK_COLOR: Color = Color("1d2433")
 
 var category: String = ""
 
@@ -32,17 +51,22 @@ var _entries: Array[Checkable] = []
 var _store: ReportStore = null
 var _tree: Tree = null
 var _play_icon: Texture2D = null
+var _played_icon: Texture2D = null
 var _summary: Label = null
 ## Rows currently in the Tree, which is fewer than `_entries` when filtering.
 var _shown_count: int = 0
 ## Entries the pack has no recording for. Fixed once the pack is open.
 var _missing_sound_count: int = 0
+## Texts whose recording the tester has played, so the list can show what is
+## left to hear. Kept for the session only — it says nothing about the pack, so
+## it is not worth saving next to the reports.
+var _played: Dictionary[String, bool] = {}
 
 # Active filters.
 var _search: String = ""
 var _lesson_filter: int = 0          # 0 = every lesson
 var _only_problems: bool = false
-var _only_missing_sounds: bool = false
+var _audio_filter: AudioFilter = AudioFilter.EXISTING
 
 
 func _init() -> void:
@@ -50,7 +74,8 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	_play_icon = Icons.play(18, Color("e8eef2"))
+	_play_icon = Icons.play(18, PLAY_COLOR)
+	_played_icon = Icons.play(18, PLAYED_COLOR)
 
 	_tree = Tree.new()
 	_tree.columns = COLUMN_COUNT
@@ -78,10 +103,19 @@ func _ready() -> void:
 	_tree.set_column_clip_content(COLUMN_TEXT, true)
 	_tree.set_column_clip_content(COLUMN_COMMENT, true)
 
+	# The Tree's own tick box is small and low contrast, and it is the one thing
+	# every tester has to hit and to read back across thousands of rows.
+	_tree.add_theme_icon_override("unchecked",
+			Icons.check_box(CHECKBOX_SIZE, false, CHECKBOX_BORDER_COLOR))
+	_tree.add_theme_icon_override("checked",
+			Icons.check_box(CHECKBOX_SIZE, true, PROBLEM_COLOR, CHECKBOX_MARK_COLOR))
+
 	_tree.button_clicked.connect(_on_button_clicked)
 	_tree.item_edited.connect(_on_item_edited)
 	_tree.item_activated.connect(_on_item_activated)
 	add_child(_tree)
+	# Drawn over the Tree, so it must be added to it rather than beside it.
+	_tree.add_child(TreeColumnLines.new(_tree))
 
 	_summary = Label.new()
 	_summary.add_theme_color_override("font_color", MUTED_COLOR)
@@ -99,6 +133,7 @@ func setup(p_category: String, entries: Array[Checkable], store: ReportStore) ->
 	_entries = entries
 	_store = store
 	name = p_category
+	_played.clear()
 	_missing_sound_count = 0
 	for entry: Checkable in _entries:
 		if entry.has_missing_sound():
@@ -111,11 +146,11 @@ func set_filters(
 		search: String,
 		lesson: int,
 		only_problems: bool,
-		only_missing_sounds: bool) -> void:
+		audio_filter: AudioFilter) -> void:
 	_search = search.strip_edges().to_lower()
 	_lesson_filter = lesson
 	_only_problems = only_problems
-	_only_missing_sounds = only_missing_sounds
+	_audio_filter = audio_filter
 	rebuild()
 
 
@@ -129,6 +164,29 @@ func lessons() -> Array[int]:
 	result.assign(seen.keys())
 	result.sort()
 	return result
+
+
+## Selects the next listed entry that has a recording and plays it, so a tester
+## can work down a list on the spacebar instead of aiming at every play button.
+## Returns false at the end of the list, with nothing played.
+func play_next() -> bool:
+	if _tree == null:
+		return false
+	var root: TreeItem = _tree.get_root()
+	if root == null:
+		return false
+
+	var selected: TreeItem = _tree.get_selected()
+	var item: TreeItem = root.get_first_child() if selected == null \
+			else selected.get_next()
+	while item != null:
+		var entry: Checkable = _entry_for(item)
+		if entry != null and entry.has_sound():
+			_tree.scroll_to_item(item, true)
+			_play(item, entry)
+			return true
+		item = item.get_next()
+	return false
 
 
 func rebuild() -> void:
@@ -152,8 +210,13 @@ func _passes_filters(entry: Checkable) -> bool:
 		return false
 	if _only_problems and not _store.is_flagged(category, entry.text):
 		return false
-	if _only_missing_sounds and not entry.has_missing_sound():
-		return false
+	match _audio_filter:
+		AudioFilter.EXISTING:
+			if not entry.has_sound():
+				return false
+		AudioFilter.MISSING:
+			if not entry.has_missing_sound():
+				return false
 	if not _search.is_empty() and not entry.text.to_lower().contains(_search):
 		return false
 	return true
@@ -188,29 +251,31 @@ func _add_row(root: TreeItem, entry: Checkable) -> void:
 
 
 func _set_up_sound_cell(item: TreeItem, entry: Checkable) -> void:
-	if entry.has_sound():
-		var label: String = ""
-		if entry.sound_names.size() > 1:
-			# A sentence is read word by word; say how many recordings that is.
-			label = "%d" % entry.sound_names.size()
-		item.set_text(COLUMN_SOUND, label)
-		item.set_text_alignment(COLUMN_SOUND, HORIZONTAL_ALIGNMENT_RIGHT)
-		item.add_button(COLUMN_SOUND, _play_icon, PLAY_BUTTON_ID, false, "Play this sound")
-		if entry.has_missing_sound():
-			# A sentence can be partly recorded: playable, but still incomplete.
-			item.set_custom_color(COLUMN_SOUND, PROBLEM_COLOR)
-			item.set_tooltip_text(COLUMN_SOUND, "%d of its recordings are missing: %s"
-					% [entry.missing_sound_names.size(),
-					", ".join(entry.missing_sound_names)])
-		return
-
-	item.set_text(COLUMN_SOUND,
-			MISSING_SOUND_LABEL if entry.has_missing_sound() else NO_SOUND_LABEL)
-	item.set_text_alignment(COLUMN_SOUND, HORIZONTAL_ALIGNMENT_CENTER)
-	item.set_custom_color(COLUMN_SOUND, MISSING_COLOR)
-	if entry.has_missing_sound():
+	if not entry.has_sound():
+		item.set_text(COLUMN_SOUND, MISSING_SOUND_LABEL)
+		item.set_text_alignment(COLUMN_SOUND, HORIZONTAL_ALIGNMENT_CENTER)
+		item.set_custom_color(COLUMN_SOUND, MISSING_COLOR)
 		item.set_tooltip_text(COLUMN_SOUND, "This pack has no %s"
 				% ", ".join(entry.missing_sound_names))
+		return
+
+	item.set_text_alignment(COLUMN_SOUND, HORIZONTAL_ALIGNMENT_RIGHT)
+	item.add_button(COLUMN_SOUND, _play_icon, PLAY_BUTTON_ID, false, "")
+	_apply_play_button(item, entry)
+
+
+## A played sound gets a dimmer button, so a tester glancing down the column can
+## see where they are up to — the list is thousands of rows long and they come
+## back to it over several sittings.
+func _apply_play_button(item: TreeItem, entry: Checkable) -> void:
+	if item.get_button_count(COLUMN_SOUND) <= PLAY_BUTTON_INDEX:
+		return
+	var played: bool = _played.has(entry.text)
+	item.set_button(COLUMN_SOUND, PLAY_BUTTON_INDEX,
+			_played_icon if played else _play_icon)
+	item.set_button_tooltip_text(COLUMN_SOUND, PLAY_BUTTON_INDEX,
+			"Play it again — you have listened to this one" if played
+			else "Play this sound")
 
 
 func _apply_row_colour(item: TreeItem, entry: Checkable) -> void:
@@ -241,6 +306,18 @@ func _entry_for(item: TreeItem) -> Checkable:
 	return metadata as Checkable
 
 
+## Asks for the sound and remembers that it was heard.
+func _play(item: TreeItem, entry: Checkable) -> void:
+	# Whatever played last is where the spacebar carries on from, so a play
+	# button pressed halfway down the list has to move the selection too: a
+	# click on a button leaves the selection where it was.
+	_tree.set_selected(item, COLUMN_TEXT)
+	if not _played.has(entry.text):
+		_played[entry.text] = true
+		_apply_play_button(item, entry)
+	play_requested.emit(entry)
+
+
 func _on_button_clicked(
 		item: TreeItem,
 		column: int,
@@ -252,7 +329,7 @@ func _on_button_clicked(
 		return
 	var entry: Checkable = _entry_for(item)
 	if entry:
-		play_requested.emit(entry)
+		_play(item, entry)
 
 
 func _on_item_activated() -> void:
@@ -261,7 +338,7 @@ func _on_item_activated() -> void:
 		return
 	var entry: Checkable = _entry_for(item)
 	if entry and entry.has_sound():
-		play_requested.emit(entry)
+		_play(item, entry)
 
 
 func _on_item_edited() -> void:

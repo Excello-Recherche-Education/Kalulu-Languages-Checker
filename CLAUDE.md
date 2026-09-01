@@ -146,8 +146,36 @@ anonymous `ListBucket` scoped to the same prefix. The root packs and
   two in sync.
 - **Sound file naming mirrors the game** (`Database.get_*_sound_path` in the
   frontend): `<Grapheme>-<Phoneme>.mp3` for a GP, `<text>.mp3` for a syllable or
-  word, after replacing `/ \ : * ? " < > |` with `_`. Sentences have no
-  recording; they play their words in order.
+  word, after replacing `/ \ : * ? " < > |` with `_`.
+- **Sentences are not reviewed, on purpose.** A sentence has no recording of its
+  own — the game reads it word by word — so there is nothing for a tester to
+  listen to, and every word it is made of is already in the Words list. So
+  `LanguageData` has three categories, not four, and never reads the `Sentences`
+  or `WordsInSentences` tables. `ReportStore.load_saved()` drops a category that
+  is no longer reviewed, because `rows()` would leave it out of the CSV and the
+  counter would then promise the tester reports we never receive.
+- **The list hides entries with no recording by default.** There is nothing to
+  play on those rows, and a missing recording is a fault for the team, not
+  something a tester reviews. The **Audio** dropdown
+  (`CheckList.AudioFilter`) is what asks for them. Every entry has exactly one
+  recording, present or missing — `Checkable` keeps arrays only because
+  `SoundQueue` takes a list.
+- **The spacebar plays the next sound**, handled in `CheckerScreen._input()`
+  rather than by the `Tree`. It has to be `_input()`: Godot maps Space to
+  `ui_accept`, which the focused `Tree` would use to start editing a cell, and
+  `_input()` runs before any `_gui_input()`. The handler bails out when a
+  `LineEdit` or `TextEdit` has focus, so typing a space in the search box or in
+  a comment still types a space — that is the one thing to re-check if the key
+  ever stops working.
+- **The `Tree` has no column separators**, so `TreeColumnLines` draws them on
+  top of it, reading the geometry back from `get_item_area_rect()` every frame —
+  a column resize and a scroll are neither of them a signal. It is a child *of*
+  the Tree, which is what puts it above the Tree's own drawing, and it needs a
+  row to measure: an empty list draws no rules.
+- **The tick box and the play button are generated icons** (`Icons`), overriding
+  the `Tree`'s `checked`/`unchecked` theme icons. A dimmed play button means the
+  tester has already heard that recording; the state is deliberately not saved
+  next to the reports, since it says nothing about the pack.
 - **Do not extract the pack.** Only `language.db` is written out. Audio is read
   from the open `ZIPReader` on demand. A pack holds 20–55 MB of MP3 files and in
   a browser the user filesystem sits in memory.
