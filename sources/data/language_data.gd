@@ -145,11 +145,12 @@ func _build_gps(gp_lessons: Dictionary[int, int]) -> Array[Checkable]:
 		var entry: Checkable = Checkable.new()
 		entry.category = CATEGORY_GP
 		entry.text = str(row.Grapheme) + "-" + str(row.Phoneme)
+		entry.phoneme = str(row.Phoneme)
 		entry.lesson = gp_lessons.get(int(row.ID), 0)
 		_assign_sound(entry, PackArchive.gp_sound_name(
 				str(row.Grapheme), str(row.Phoneme)))
 		entries.append(entry)
-	_sort(entries)
+	_sort_by_phoneme(entries)
 	return entries
 
 
@@ -180,6 +181,50 @@ func _assign_sound(entry: Checkable, sound_name: String) -> void:
 		entry.sound_names.append(sound_name)
 	else:
 		entry.missing_sound_names.append(sound_name)
+
+
+## Phoneme order, so every way of writing one sound is listed together — "a-a",
+## "à-a", "â-a", then the /i/ group, and so on. That is what a tester is really
+## judging on this list: whether all the recordings of one sound agree, which is
+## a question you can only answer by hearing them one after the other.
+##
+## It costs the lesson order the other lists have, deliberately. Lesson order
+## would scatter the graphemes of a sound across the pack, which is the opposite
+## of the point, and the lesson of each pair is still in its own column and its
+## own filter.
+##
+## The groups themselves run in teaching order — each sound sits at the first
+## lesson that teaches any of its spellings — so the list still opens on the
+## sounds of lesson 1 and the Lesson column still climbs. Ordering the groups by
+## the phoneme instead would be arbitrary to a tester: the phonemes in a pack
+## are internal codes ("1", "2", "5", "@"), not something they can read.
+##
+## Then, within one first lesson: phonemes that differ only in case are brought
+## together, because "e-E" against "e-e" is a pair worth hearing back to back;
+## each exact phoneme stays contiguous rather than interleaved; and the
+## graphemes of one sound are alphabetical.
+func _sort_by_phoneme(entries: Array[Checkable]) -> void:
+	const NO_LESSON: int = 1 << 30
+	var first_lesson: Dictionary[String, int] = {}
+	for entry: Checkable in entries:
+		var lesson: int = entry.lesson if entry.lesson > 0 else NO_LESSON
+		first_lesson[entry.phoneme] = mini(
+				first_lesson.get(entry.phoneme, NO_LESSON), lesson)
+
+	entries.sort_custom(func (a: Checkable, b: Checkable) -> bool:
+		# Every spelling of a sound shares its group's lesson, so this orders
+		# the groups without ever splitting one.
+		var a_first: int = first_lesson[a.phoneme]
+		var b_first: int = first_lesson[b.phoneme]
+		if a_first != b_first:
+			return a_first < b_first
+		var by_sound: int = a.phoneme.filenocasecmp_to(b.phoneme)
+		if by_sound != 0:
+			return by_sound < 0
+		if a.phoneme != b.phoneme:
+			return a.phoneme < b.phoneme
+		return a.text.filenocasecmp_to(b.text) < 0
+	)
 
 
 ## Lesson order, then alphabetical, so a tester can work through a pack the way

@@ -166,6 +166,63 @@ func lessons() -> Array[int]:
 	return result
 
 
+## One click into the comment box, rather than one to select the row and a
+## second to start typing. A tester who has just heard something wrong is
+## already reaching for the keyboard, and the second click is pure friction.
+##
+## The Tree needs the two clicks by design: it starts editing only on a click
+## whose cell was *already* selected, and it does so on the button coming back
+## up, from inside its own input handling. So this waits for that release and
+## opens the editor then — deferred, because the Tree's handling of the same
+## release runs after this and closes an editor opened too early, which is what
+## made the obvious version of this silently do nothing.
+func _input(event: InputEvent) -> void:
+	if _tree == null or not is_visible_in_tree() or is_editing():
+		return
+	var click: InputEventMouseButton = event as InputEventMouseButton
+	if click == null or click.pressed or click.button_index != MOUSE_BUTTON_LEFT:
+		return
+	if _tree.get_selected_column() != COLUMN_COMMENT:
+		return
+	var item: TreeItem = _tree.get_selected()
+	if item == null:
+		return
+	# Only when the button came up over that row's comment cell: a release over
+	# the play button of another row must not reopen this one. The point comes
+	# from the event rather than from get_local_mouse_position(), which reads
+	# the live cursor and so answers for wherever the pointer is now.
+	var local: Vector2 = _tree.get_global_transform().affine_inverse() * click.position
+	if not _tree.get_item_area_rect(item, COLUMN_COMMENT).has_point(local):
+		return
+	_open_comment_editor.call_deferred()
+
+
+func _open_comment_editor() -> void:
+	if _tree == null or _tree.get_selected() == null:
+		return
+	if _tree.get_selected_column() != COLUMN_COMMENT:
+		return
+	_tree.edit_selected(true)
+
+
+## True while the tester is typing in a cell, which the spacebar has to stand
+## down for. Godot exposes no signal and no property for it — `get_edited()`
+## only answers once the editor has closed, and the editor takes no GUI focus
+## because it lives in a Popup the Tree owns — so a visible Popup is the state.
+##
+## Whether a key reaches the screen's _input() while that Popup is up depends on
+## how a platform routes input into an embedded subwindow, and the checker ships
+## on the web where that is not the desktop's answer. So this does not rely on
+## the routing: it asks the question outright.
+func is_editing() -> bool:
+	if _tree == null:
+		return false
+	for child: Node in _tree.get_children(true):
+		if child is Popup and (child as Popup).visible:
+			return true
+	return false
+
+
 ## Selects the next listed entry that has a recording and plays it, so a tester
 ## can work down a list on the spacebar instead of aiming at every play button.
 ## Returns false at the end of the list, with nothing played.

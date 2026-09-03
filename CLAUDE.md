@@ -163,10 +163,44 @@ anonymous `ListBucket` scoped to the same prefix. The root packs and
 - **The spacebar plays the next sound**, handled in `CheckerScreen._input()`
   rather than by the `Tree`. It has to be `_input()`: Godot maps Space to
   `ui_accept`, which the focused `Tree` would use to start editing a cell, and
-  `_input()` runs before any `_gui_input()`. The handler bails out when a
-  `LineEdit` or `TextEdit` has focus, so typing a space in the search box or in
-  a comment still types a space — that is the one thing to re-check if the key
-  ever stops working.
+  `_input()` runs before any `_gui_input()`. Two things must keep getting their
+  space instead: the search box, which has focus and takes the key itself, and a
+  comment being written, which does **not** have focus — so `CheckList` answers
+  that question outright, see the next point. If the spacebar ever stops
+  working, or starts eating spaces, this is the pair to re-check.
+- **The `Tree`'s cell editor holds no GUI focus and announces nothing.** It
+  lives in a `Popup` the `Tree` owns, so `gui_get_focus_owner()` still returns
+  the `Tree` while a tester is typing, and `get_edited()` answers only once the
+  editor has *closed* — it is the "what was just edited" accessor, not an
+  is-editing flag. `CheckList.is_editing()` therefore looks for a visible
+  `Popup` among the `Tree`'s internal children. Whether a key even reaches
+  `_input()` while that popup is up depends on how the platform routes input
+  into an embedded subwindow, and this ships on the web, so nothing here relies
+  on that routing.
+- **One click into the comment cell needs help.** The `Tree` starts editing only
+  on a click whose cell was *already* selected, and it does it on the button
+  coming back **up**, from inside its own input handling. So `CheckList._input()`
+  waits for the left-button release over the selected row's comment cell and
+  opens the editor `call_deferred()` — the obvious version, opening it when the
+  row is selected, silently does nothing, because the `Tree`'s handling of the
+  same release runs afterwards and closes it. The hit test uses the event's own
+  position, not `get_local_mouse_position()`, which answers for wherever the
+  cursor is *now*.
+- **The GP list is grouped by phoneme, not by lesson.** Every way of writing one
+  sound is listed together, because that is the question a tester is really
+  answering — do all the recordings of this sound agree? — and it can only be
+  heard by playing them one after another. The groups themselves run in teaching
+  order, each sitting at the first lesson that teaches any of its spellings;
+  ordering the groups by the phoneme would be arbitrary, since a pack's phonemes
+  are internal codes (`1`, `2`, `5`, `@`), not something a tester reads. The
+  order is computed over the **whole** pack, including entries with no recording,
+  so it does not shift when the audio filter changes — which is why a group can
+  appear to sit at the wrong lesson: `au-O` is anchored at lesson 6 by an
+  unrecorded `o-O` that the list is hiding.
+- **The tabs carry no counts.** They used to say `GP (118)`, which stopped
+  meaning anything once the list began hiding entries with no recording — the
+  tab said 118 while the list showed 92. The line under the list is the honest
+  place for it, and it names which number is which.
 - **The `Tree` has no column separators**, so `TreeColumnLines` draws them on
   top of it, reading the geometry back from `get_item_area_rect()` every frame —
   a column resize and a scroll are neither of them a signal. It is a child *of*

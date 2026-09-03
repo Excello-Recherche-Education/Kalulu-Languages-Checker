@@ -32,10 +32,22 @@ project by [Excello Recherche & Éducation](https://github.com/Excello-Recherche
    an update is always the tester's decision.
 4. **Check it.** Three tabs — **GP**, **Syllables**, **Words** — each listing
    every entry with its lesson number, a ▶ button for its recording, a box to
-   tick when something is wrong, and a field to say what. **The spacebar plays
-   the next sound**, which is how a tester gets through a list of 2500 words
-   without reaching for the mouse on every row; a recording already heard keeps
-   a dimmed ▶ so it is clear where they are up to.
+   tick when something is wrong, and a field to say what, which one click opens
+   for typing. **The spacebar plays the next sound**, which is how a tester gets
+   through a list of 2500 words without reaching for the mouse on every row; a
+   recording already heard keeps a dimmed ▶ so it is clear where they are up to.
+
+   The **GP list is grouped by sound**: every way of writing one phoneme is
+   listed together — `a-a`, `à-a`, `â-a`, then the /i/ group — because the
+   question a tester is really answering there is whether all the recordings of
+   one sound agree, and that can only be heard by playing them one after the
+   other. The groups still run in teaching order, each at the first lesson that
+   teaches any of its spellings.
+
+   The tabs carry no counts, deliberately: the number of entries in the pack
+   stopped meaning anything once the list began hiding the ones with no
+   recording. The line under the list is where the counts are, and it says which
+   number is which.
 
    By default the list shows only the entries the pack has a recording for —
    there is nothing to listen to on the others, and a missing recording is for
@@ -243,7 +255,11 @@ godot --path . --resolution 1280x800 --script tests/ui_capture.gd -- ~/packs/fr_
 
 **The web build**, end to end in a real browser — feeds a pack to the file
 input, waits for SQLite to open it on the browser filesystem, reports a problem,
-and checks the CSV that comes out:
+types a comment, and checks the CSV that comes out. The comment is what proves
+the two things a canvas hides: that **one** click opened the editor, and that
+the space in it was typed rather than playing the next sound. Both depend on how
+the platform routes input into an embedded subwindow, so desktop cannot answer
+for them:
 
 ```bash
 (cd build/lang-tester && python3 -m http.server 8099) &

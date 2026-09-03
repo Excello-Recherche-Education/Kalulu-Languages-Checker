@@ -74,6 +74,25 @@ async function clickAt(x, y) {
 	await sleep(400);
 }
 
+// Deliberately contains a space: see where it is checked, at the end of the run.
+const COMMENT_TEXT = 'too quiet';
+
+
+async function typeText(text) {
+	for (const character of text) {
+		// A space has to go through as a key, not only as text: the whole point
+		// of typing one here is that the spacebar must not be taken by the list.
+		const key = character === ' '
+			? { key: ' ', code: 'Space', windowsVirtualKeyCode: 32, nativeVirtualKeyCode: 32 }
+			: { key: character };
+		await send('Input.dispatchKeyEvent', { type: 'keyDown', text: character, ...key });
+		await send('Input.dispatchKeyEvent', { type: 'keyUp', ...key });
+		await sleep(40);
+	}
+	await sleep(300);
+}
+
+
 async function main() {
 	const targets = await (await fetch('http://127.0.0.1:9222/json')).json();
 	const page = targets.find((t) => t.type === 'page');
@@ -165,9 +184,13 @@ async function main() {
 	// from the bottom of the viewport rather than assumed to be 800px down.
 	const viewport = await evaluate('({w: window.innerWidth, h: window.innerHeight})');
 	const FIRST_ROW_Y = 156;
+	const SECOND_ROW_Y = 183;
 	const PROBLEM_CHECKBOX_X = 566;
+	// Well inside the "What is wrong" column, which runs from about x=640 to the
+	// right edge. Re-measure from 02_checker_screen.png if a click ever misses.
+	const COMMENT_X = 800;
 	const FINISH_BUTTON = { x: viewport.w - 146, y: viewport.h - 34 };
-	// Measured from 04_thank_you.png, where the button spans y 528–568. Unlike
+	// Measured from 05_thank_you.png, where the button spans y 528–568. Unlike
 	// the footer above, this one is laid out from the top of a centred column,
 	// so it does not follow the viewport height and is quoted outright.
 	const DOWNLOAD_BUTTON_Y = 548;
@@ -176,10 +199,21 @@ async function main() {
 	await clickAt(PROBLEM_CHECKBOX_X, FIRST_ROW_Y);
 	await screenshot('03_problem_ticked');
 
+	// One click into the comment cell has to open the editor — the Tree wants
+	// two by default — and the space in what is typed has to arrive as a space
+	// rather than playing the next sound, which is what the spacebar does when
+	// no cell is being edited. Neither can be seen from here: the interface is
+	// a canvas. The CSV at the end of the run is where the answer shows up.
+	console.log('Typing a comment with a space in it, in one click…');
+	await clickAt(COMMENT_X, FIRST_ROW_Y);
+	await typeText(COMMENT_TEXT);
+	await clickAt(PROBLEM_CHECKBOX_X, SECOND_ROW_Y);  // commits by clicking away
+	await screenshot('04_comment_typed');
+
 	console.log('Clicking "Finish testing and send report"…');
 	await clickAt(FINISH_BUTTON.x, FINISH_BUTTON.y);
 	await sleep(2500);
-	await screenshot('04_thank_you');
+	await screenshot('05_thank_you');
 
 	const { readdir, readFile } = await import('node:fs/promises');
 	// Chrome creates the download directory only when it first writes to it, so
@@ -208,12 +242,12 @@ async function main() {
 	// The buttons row is centred under a 720px column, and on the web the
 	// "Show me the file" button is hidden — so the row is the 240px download
 	// button and the 180px mail button with 12px between them. Re-measure from
-	// 04_thank_you.png if a click ever lands somewhere unexpected.
+	// 05_thank_you.png if a click ever lands somewhere unexpected.
 	const DOWNLOAD_BUTTON = { x: Math.round(viewport.w / 2) - 96, y: DOWNLOAD_BUTTON_Y };
 
 	console.log('Clicking "Download the report"…');
 	await clickAt(DOWNLOAD_BUTTON.x, DOWNLOAD_BUTTON.y);
-	await screenshot('05_download_requested');
+	await screenshot('06_download_requested');
 
 	const files = await waitFor('the CSV download to appear', async () => {
 		const found = await csvsPresent();
@@ -224,6 +258,18 @@ async function main() {
 	console.log('--- CSV ---');
 	console.log(csv.trimEnd());
 	console.log('-----------');
+
+	// What the comment proves, and why it is checked here rather than by eye:
+	// the text arrived at all (one click opened the editor) and it kept its
+	// space (the spacebar stood down while a cell was being edited instead of
+	// playing the next sound). Both are invisible on a canvas.
+	if (!csv.includes(COMMENT_TEXT)) {
+		const typed = csv.split(/\r?\n/).find((line) => line.includes('too'));
+		throw new Error(
+			`the comment did not survive: expected ${JSON.stringify(COMMENT_TEXT)}, `
+			+ `CSV has ${JSON.stringify(typed ?? '(no comment row at all)')}`);
+	}
+	console.log(`  ok    one click opened the editor and the space was typed`);
 
 	console.log('\nGodot console output:');
 	for (const line of consoleLines) console.log(`  ${line}`);

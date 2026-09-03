@@ -92,16 +92,18 @@ func _input(event: InputEvent) -> void:
 		return
 	if key.keycode != KEY_SPACE or key.get_modifiers_mask() != 0:
 		return
-	# A tester typing in the search box, or writing what is wrong with an entry,
-	# must get a space — those fields keep the key for themselves.
+	# A tester typing in the search box must get a space: that field has focus,
+	# and takes the key for itself.
 	var focused: Control = get_viewport().gui_get_focus_owner()
 	if focused is LineEdit or focused is TextEdit:
 		return
+	# Writing what is wrong with an entry must get one too, and that editor does
+	# not hold the focus — see CheckList.is_editing().
+	var list: CheckList = _current_list()
+	if list == null or list.is_editing():
+		return
 
 	get_viewport().set_input_as_handled()
-	var list: CheckList = _current_list()
-	if list == null:
-		return
 	if not list.play_next():
 		_sound_queue.stop_all()
 		_now_playing.text = "End of the list — nothing left to play below."
@@ -131,8 +133,12 @@ func setup(
 		list.play_requested.connect(_on_play_requested)
 		_tabs.add_child(list)
 		_lists.append(list)
-		_tabs.set_tab_title(_tabs.get_tab_count() - 1,
-				"%s (%d)" % [_tab_title(category), category_entries.size()])
+		# No count on the tab. It used to carry the number of entries in the
+		# pack, which stopped meaning anything once the list began hiding the
+		# ones with no recording: the tab said 118 and the list showed 92. The
+		# line under the list is the honest place for it, and it says which
+		# number is which.
+		_tabs.set_tab_title(_tabs.get_tab_count() - 1, _tab_title(category))
 
 	_header.text = "%s  ·  %s" % [
 		AvailablePacks.locale_name(archive.locale), archive.locale]

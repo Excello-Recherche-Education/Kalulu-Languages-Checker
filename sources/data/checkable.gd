@@ -9,6 +9,9 @@ var category: String = ""
 var text: String = ""
 ## Lesson the entry belongs to, 0 when the pack does not say.
 var lesson: int = 0
+## The sound a grapheme-phoneme pair makes, which is what the GP list is ordered
+## by. Empty for a syllable or a word: they have no phoneme of their own.
+var phoneme: String = ""
 ## The recording to play, relative to language_sounds/ — one name, or none when
 ## the pack does not carry it. Stays a list because SoundQueue plays a list.
 var sound_names: PackedStringArray = PackedStringArray()
