@@ -18,6 +18,27 @@ const SOUND_EXTENSION: String = ".mp3"
 ## Kept in sync with Utils.INVALID_FILE_CHARS in the Kalulu frontend.
 const INVALID_FILE_CHARS: Array[String] = ["/", "\\", ":", "*", "?", "\"", "<", ">", "|"]
 
+## Names Windows refuses, which the Prof Tool prefixes with "_" before writing.
+## Kept in sync with Utils.RESERVED_FILE_NAMES in the Kalulu frontend — the
+## Spanish word "con" is the one that actually occurs in a pack.
+const RESERVED_FILE_NAMES: Array[String] = [
+	"CON", "PRN", "AUX", "NUL",
+	"COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+	"LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
+]
+
+## Symbols a pack spells out in a file name, so a "%" phoneme cannot be mangled
+## on the way to disk. Kept in sync with Database._SYMBOLS_TO_STRING in the
+## Kalulu frontend.
+const SYMBOLS_TO_STRING: Dictionary[String, String] = {
+	"#": "sharp",
+	"@": "at",
+	"*": "star",
+	"$": "usd",
+	"%": "pcent",
+	"§": "para"
+}
+
 ## Locale of the pack, taken from the folder inside the archive (e.g. "fr_FR").
 var locale: String = ""
 ## Contents of version.txt, an ISO 8601 timestamp. Empty when the file is absent.
@@ -36,9 +57,12 @@ var _root: String = ""
 ##
 ## Deliberately case sensitive. Every pack has grapheme-phoneme pairs that
 ## differ only in case — "e-E" against "e-e", "r-R" against "r-r" — and those
-## are different sounds. Falling back to a case-insensitive match would play
-## the recording of the other pair, and a tester would hear something
-## plausible and pass an entry whose own recording is in fact missing.
+## are different sounds. Their file names no longer collide, because an
+## uppercase letter is spelled out now (see [method encode_text]), but a pack
+## built before that change still holds the old names; matching those case
+## insensitively would play the recording of the other pair, and a tester
+## would hear something plausible and pass an entry whose own recording is
+## in fact missing.
 var _sounds: Dictionary[String, String] = {}
 
 
@@ -109,23 +133,40 @@ func read_sound(file_name: String) -> PackedByteArray:
 	return _reader.read_file(entry)
 
 
-## Builds the sound file name the game would look for, for a grapheme-phoneme
-## pair: "<Grapheme>-<Phoneme>.mp3". Mirrors Database.get_gp_sound_path().
+## Builds the sound file name the game looks for, for a grapheme-phoneme pair.
+## Mirrors Database.get_gp_file_name().
 static func gp_sound_name(grapheme: String, phoneme: String) -> String:
-	return sanitize_file_name(grapheme + "-" + phoneme) + SOUND_EXTENSION
+	return sanitize_file_name(
+			encode_text(grapheme) + "-" + encode_text(phoneme)) + SOUND_EXTENSION
 
 
-## Sound file name for a syllable, a word or any other plain text entry:
-## "<text>.mp3". Mirrors Database.get_word_sound_path().
+## Sound file name for a syllable, a word or any other plain text entry.
+## Mirrors Database.get_word_sound_path().
 static func text_sound_name(text: String) -> String:
-	return sanitize_file_name(text) + SOUND_EXTENSION
+	return sanitize_file_name(encode_text(text)) + SOUND_EXTENSION
+
+
+## Encodes one piece of database text into the name a pack stores it under.
+## Mirrors Database._text_to_file_name() in the Kalulu frontend: a symbol
+## becomes a word, all-lowercase text is left alone, and anything carrying an
+## uppercase letter is lowered behind a "cap." prefix — so "e-E" and "e-e" name
+## two different files even where the filesystem folds case.
+static func encode_text(text: String) -> String:
+	if SYMBOLS_TO_STRING.has(text):
+		return SYMBOLS_TO_STRING[text]
+	if text == text.to_lower():
+		return text
+	return "cap." + text.to_lower()
 
 
 ## Applies the same substitutions the Prof Tool applies before writing a file.
+## Mirrors Utils.get_safe_file_path() in the Kalulu frontend.
 static func sanitize_file_name(name: String) -> String:
 	var result: String = name
 	for character: String in INVALID_FILE_CHARS:
 		result = result.replace(character, "_")
+	if result.to_upper() in RESERVED_FILE_NAMES:
+		result = "_" + result
 	return result
 
 

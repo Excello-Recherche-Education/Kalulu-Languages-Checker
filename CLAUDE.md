@@ -135,11 +135,19 @@ anonymous `ListBucket` scoped to the same prefix. The root packs and
   the pack. Released packs exist with empty `words_list.csv` and
   `syllables_list.csv` (`es_CO` is missing 1622 words and 240 syllables from its
   exports). Reading the CSVs would hide most of a pack from the tester.
+- **A file name is encoded, not copied from the database.** `PackArchive.encode_text()`
+  spells an uppercase letter out behind a `cap.` prefix and turns a symbol into a
+  word, so `e-E` is stored as `e-cap.e` and the `%` phoneme as `e-pcent`. It
+  mirrors `Database._text_to_file_name()` in the frontend — keep the two in sync,
+  or the Checker will report recordings as missing that the game plays perfectly
+  well.
 - **Sound lookups are case sensitive on purpose.** Every pack has entries that
   differ only in case — `e-E`/`e-e`, `o-O`/`o-o`, `r-R`/`r-r` — and those are
-  different sounds. Do not add a case-insensitive fallback: it would serve the
-  other entry's recording, and a tester would pass an entry whose recording is
-  actually missing. See `PackArchive._sounds`.
+  different sounds. The encoding above now keeps their file names apart, but a
+  pack built before it still holds the old colliding names. Do not add a
+  case-insensitive fallback: it would serve the other entry's recording, and a
+  tester would pass an entry whose recording is actually missing. See
+  `PackArchive._sounds`.
 - **Names are matched on their decomposed form.** Packs built on macOS store
   `café.mp3` with a combining accent, the database spells it precomposed.
   `UnicodeNormalizer` handles it and is a copy of the frontend's file — keep the
