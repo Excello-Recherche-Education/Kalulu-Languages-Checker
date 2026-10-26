@@ -162,6 +162,10 @@ anonymous `ListBucket` scoped to the same prefix. The root packs and
   or `WordsInSentences` tables. `ReportStore.load_saved()` drops a category that
   is no longer reviewed, because `rows()` would leave it out of the CSV and the
   counter would then promise the tester reports we never receive.
+- **Booklet-only words and syllables are not reviewed either.** From schema
+  version 2 a pack can mark an entry `BookletOnly`: the printed reading booklets
+  use it, the game never plays it, so it has no recording. `LanguageData._in_game()`
+  leaves those out, and keeps everything when a pack predates the column.
 - **The list hides entries with no recording by default.** There is nothing to
   play on those rows, and a missing recording is a fault for the team, not
   something a tester reviews. The **Audio** dropdown

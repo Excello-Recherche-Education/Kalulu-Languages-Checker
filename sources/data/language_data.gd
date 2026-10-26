@@ -99,6 +99,14 @@ func _reviewable(category: String, entries: Array[Checkable]) -> Array[Checkable
 	return result
 
 
+## SQL condition leaving out the entries only the printed booklets use: the game
+## never plays them, so they have no recording to review. A pack from before
+## schema version 2 has no such column, and every entry in it is the game's.
+func _in_game() -> String:
+	var rows: Array = _query("SELECT name FROM pragma_table_info('Words') WHERE name = 'BookletOnly'")
+	return "BookletOnly = 0" if not rows.is_empty() else "1"
+
+
 func _query(sql: String) -> Array:
 	if _db == null:
 		return []
@@ -161,7 +169,7 @@ func _build_texts(
 		lessons: Dictionary[int, int]) -> Array[Checkable]:
 	var entries: Array[Checkable] = []
 	var rows: Array = _query(
-			"SELECT ID, %s AS Text FROM %s" % [text_column, table])
+			"SELECT ID, %s AS Text FROM %s WHERE %s" % [text_column, table, _in_game()])
 	for row: Dictionary in rows:
 		var text: String = str(row.Text)
 		var entry: Checkable = Checkable.new()
