@@ -170,6 +170,10 @@ media the checker does not use. Handling that in a browser shapes the design:
   game reads it word by word — so there is never anything to listen to, and
   every word it is made of is already in the Words list. `language_data.gd`
   therefore does not read the `Sentences` table at all.
+- **Booklet-only words and syllables are not reviewed either.** From schema
+  version 2 a pack can mark an entry `BookletOnly`: the printed reading booklets
+  use it and the game never plays it, so it has no recording. A pack from before
+  that version is reviewed whole.
 - **No threads.** Not needing them keeps the build out of cross-origin isolated
   mode, which is what makes it hostable anywhere. See HOW-TO-UPLOAD.md §6.
 - **The file button is an HTML input in disguise.** Browsers only open a file

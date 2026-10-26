@@ -64,6 +64,25 @@ func set_comment(category: String, text: String, comment: String) -> void:
 	_on_changed()
 
 
+## Drops the reports on entries the lists no longer show -- one marked
+## booklet-only since it was flagged, say. The tester could neither see nor
+## withdraw them, yet rows() would still send them.
+func keep_only(entries: Dictionary[String, Array]) -> void:
+	var dropped: bool = false
+	for category: String in _reports.keys():
+		var listed: Dictionary[String, bool] = {}
+		for entry: Checkable in entries.get(category, [] as Array):
+			listed[entry.text] = true
+		for text: String in _reports[category].keys():
+			if not listed.has(text):
+				_reports[category].erase(text)
+				dropped = true
+		if _reports[category].is_empty():
+			_reports.erase(category)
+	if dropped:
+		_on_changed()
+
+
 func count() -> int:
 	var total: int = 0
 	for category: String in _reports:
