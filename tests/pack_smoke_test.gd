@@ -68,6 +68,8 @@ func _check_archive(archive_path: String) -> void:
 		_expect(not category_entries.is_empty(), "%s is not empty" % category)
 
 	_report_database_oddities(data)
+	_check_booklet_only_left_out(archive, entries)
+	_check_unlisted_reports_kept(entries)
 	_check_decodes_audio(archive, entries)
 	_check_report_csv(archive, entries, store)
 
@@ -89,6 +91,56 @@ func _report_database_oddities(data: LanguageData) -> void:
 		if not repeated.is_empty():
 			parts.append("%d repeated (%s)" % [repeated.size(), ", ".join(repeated)])
 		print("  note  %s: %s — hidden from the tester" % [category, ", ".join(parts)])
+
+
+## A word or syllable the pack marks booklet-only (schema version 2) has no
+## recording, so it must not reach the lists.
+func _check_booklet_only_left_out(archive: PackArchive, entries: Dictionary[String, Array]) -> void:
+	var db: SQLite = SQLite.new()
+	db.path = archive.db_path
+	db.read_only = true
+	db.open_db()
+	for pair: Array in [[LanguageData.CATEGORY_WORD, "Words", "Word"], [LanguageData.CATEGORY_SYLLABLE, "Syllables", "Syllable"]]:
+		var has_column: bool = false
+		db.query("PRAGMA table_info('%s')" % pair[1])
+		for column: Dictionary in db.query_result:
+			has_column = has_column or str(column.name) == "BookletOnly"
+		if not has_column:
+			continue
+		# A booklet-only entry spelled like one of the game's is rightly listed,
+		# as the game's.
+		db.query("SELECT %s AS Text FROM %s WHERE BookletOnly != 0 AND %s NOT IN (SELECT %s FROM %s WHERE BookletOnly = 0)"
+				% [pair[2], pair[1], pair[2], pair[2], pair[1]])
+		var marked: Dictionary[String, bool] = {}
+		for row: Dictionary in db.query_result:
+			marked[str(row.Text)] = true
+		var shown: int = 0
+		for entry: Checkable in entries.get(pair[0], [] as Array):
+			if marked.has(entry.text):
+				shown += 1
+		print("  %-9s %5d booklet-only, left out" % [pair[0], marked.size()])
+		_expect(shown == 0, "no booklet-only %s is listed (%d are)" % [pair[0].to_lower(), shown])
+	db.close_db()
+
+
+## A report on an entry the pack does not list -- written against another
+## version of it -- is neither counted nor sent, but survives a reload.
+func _check_unlisted_reports_kept(entries: Dictionary[String, Array]) -> void:
+	var word_entries: Array = entries.get(LanguageData.CATEGORY_WORD, [] as Array)
+	if word_entries.is_empty():
+		return
+	var listed: String = (word_entries[0] as Checkable).text
+	var store: ReportStore = ReportStore.new("zz_smoke_test_%d" % Time.get_ticks_usec(), "test")
+	store.set_flagged(LanguageData.CATEGORY_WORD, listed, true)
+	store.set_comment(LanguageData.CATEGORY_WORD, "zz not in any pack", "renamed since")
+	store.set_listed(entries)
+	_expect(store.count() == 1 and store.rows().size() == 1 and store.hidden_count() == 1,
+			"an unlisted report is neither counted nor sent (%d counted, %d hidden)" % [store.count(), store.hidden_count()])
+	var reloaded: ReportStore = ReportStore.new(store.locale, "test")
+	reloaded.load_saved()
+	_expect(reloaded.get_comment(LanguageData.CATEGORY_WORD, "zz not in any pack") == "renamed since",
+			"and survives a reload")
+	DirAccess.remove_absolute(store.save_path())
 
 
 ## Every playable entry claims a recording; make sure one really decodes, so a

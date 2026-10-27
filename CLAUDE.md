@@ -73,7 +73,13 @@ anonymous `ListBucket` scoped to the same prefix. The root packs and
 - **One pack is kept at a time, on purpose.** In a browser the whole user
   filesystem is held in memory, so five packs would mean carrying ~295 MB of it.
   Downloading a different locale replaces the stored one. Reports are unaffected:
-  `ReportStore` keys them by locale and they outlive the archive.
+  `ReportStore` keys them by locale and they outlive the archive. A pack only
+  *shows* the reports on entries it lists (`set_listed()`): the others — another
+  version's, a word since renamed or marked booklet-only — stay saved, out of the
+  counts and the CSV, and come back with a pack that lists them; the counter
+  says how many there are ("N earlier reports on entries not in this pack, not
+  sent"), so none disappears unnoticed. Nothing deletes them: `clear()` exists,
+  but nothing calls it.
 - **The posted report loses its byte order mark; the endpoint puts it back.**
   `ReportCsv.build()` writes a UTF-8 BOM because Excel on Windows otherwise
   reads the file as Latin-1 and mangles every accented word — which on these
@@ -162,6 +168,10 @@ anonymous `ListBucket` scoped to the same prefix. The root packs and
   or `WordsInSentences` tables. `ReportStore.load_saved()` drops a category that
   is no longer reviewed, because `rows()` would leave it out of the CSV and the
   counter would then promise the tester reports we never receive.
+- **Booklet-only words and syllables are not reviewed either.** From schema
+  version 2 a pack can mark an entry `BookletOnly`: the printed reading booklets
+  use it, the game never plays it, so it has no recording. `LanguageData._in_game()`
+  leaves those out, and keeps everything when a pack predates the column.
 - **The list hides entries with no recording by default.** There is nothing to
   play on those rows, and a missing recording is a fault for the team, not
   something a tester reviews. The **Audio** dropdown

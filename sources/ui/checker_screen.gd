@@ -306,5 +306,13 @@ func _refresh_counter() -> void:
 	var total: int = _store.count()
 	_counter.text = "" if total == 0 else "%d problem%s reported" % [
 		total, "" if total == 1 else "s"]
+	# Reports written against another version of this pack, on entries it no
+	# longer has: kept, but not shown or sent -- said here rather than lost silently.
+	var hidden: int = _store.hidden_count()
+	if hidden > 0:
+		_counter.text += ("  ·  " if total > 0 else "") + "%d earlier report%s on entries not in this pack, not sent" % [
+			hidden, "" if hidden == 1 else "s"]
+	_counter.tooltip_text = "" if hidden == 0 else \
+			"Reports you made on an earlier version of this pack, about entries it no longer has. They are kept, and come back if a pack lists those entries again."
 	_finish_button.text = "Finish testing and send report" if total == 0 \
 			else "Finish testing and send report (%d)" % total
