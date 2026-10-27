@@ -106,7 +106,10 @@ func _check_booklet_only_left_out(archive: PackArchive, entries: Dictionary[Stri
 			has_column = has_column or str(column.name) == "BookletOnly"
 		if not has_column:
 			continue
-		db.query("SELECT %s AS Text FROM %s WHERE BookletOnly != 0" % [pair[2], pair[1]])
+		# A booklet-only entry spelled like one of the game's is rightly listed,
+		# as the game's.
+		db.query("SELECT %s AS Text FROM %s WHERE BookletOnly != 0 AND %s NOT IN (SELECT %s FROM %s WHERE BookletOnly = 0)"
+				% [pair[2], pair[1], pair[2], pair[2], pair[1]])
 		var marked: Dictionary[String, bool] = {}
 		for row: Dictionary in db.query_result:
 			marked[str(row.Text)] = true

@@ -19,6 +19,10 @@ var pack_version: String = ""
 ## category -> { entry text: comment }. Presence of a text means "flagged";
 ## the value is the tester's explanation, which may be empty.
 var _reports: Dictionary[String, Dictionary] = {}
+## category -> { text: true } for the entries the open pack lists, once
+## set_listed() has been called; until then every report shows.
+var _listed: Dictionary[String, Dictionary] = {}
+var _filtering: bool = false
 
 
 func _init(p_locale: String = "", p_pack_version: String = "") -> void:
@@ -64,43 +68,55 @@ func set_comment(category: String, text: String, comment: String) -> void:
 	_on_changed()
 
 
-## Drops the reports on entries the lists no longer show -- one marked
-## booklet-only since it was flagged, say. The tester could neither see nor
-## withdraw them, yet rows() would still send them.
-func keep_only(entries: Dictionary[String, Array]) -> void:
-	var dropped: bool = false
-	for category: String in _reports.keys():
-		var listed: Dictionary[String, bool] = {}
-		for entry: Checkable in entries.get(category, [] as Array):
-			listed[entry.text] = true
-		for text: String in _reports[category].keys():
-			if not listed.has(text):
-				_reports[category].erase(text)
-				dropped = true
-		if _reports[category].is_empty():
-			_reports.erase(category)
-	if dropped:
-		_on_changed()
+## Shows only the reports on entries the open pack lists. The others stay
+## saved, untouched: reports are kept per locale, so they may have been written
+## against another version of the pack, on a word since renamed or marked
+## booklet-only, and they come back with a pack that lists those entries again.
+## Without this they counted, and went into the CSV, while no row showed them.
+func set_listed(entries: Dictionary[String, Array]) -> void:
+	_listed.clear()
+	for category: String in entries:
+		var texts: Dictionary[String, bool] = {}
+		for entry: Checkable in entries[category]:
+			texts[entry.text] = true
+		_listed[category] = texts
+	_filtering = true
+	changed.emit()
+
+
+func _is_listed(category: String, text: String) -> bool:
+	return not _filtering or (_listed.has(category) and _listed[category].has(text))
+
+
+func _listed_texts(category: String) -> Array:
+	if not _reports.has(category):
+		return []
+	return _reports[category].keys().filter(func(text: String) -> bool: return _is_listed(category, text))
 
 
 func count() -> int:
 	var total: int = 0
 	for category: String in _reports:
-		total += _reports[category].size()
+		total += _listed_texts(category).size()
 	return total
 
 
 func count_in(category: String) -> int:
-	if not _reports.has(category):
-		return 0
-	return _reports[category].size()
+	return _listed_texts(category).size()
 
 
+## Clears the reports the tester can see; those on entries this pack does not
+## list are another version's, and stay.
 func clear() -> void:
-	if _reports.is_empty():
-		return
-	_reports.clear()
-	_on_changed()
+	var cleared: bool = false
+	for category: String in _reports.keys():
+		for text: String in _listed_texts(category):
+			_reports[category].erase(text)
+			cleared = true
+		if _reports[category].is_empty():
+			_reports.erase(category)
+	if cleared:
+		_on_changed()
 
 
 ## Every flagged entry, ordered by category then text, ready for the CSV.
@@ -110,7 +126,7 @@ func rows() -> Array[PackedStringArray]:
 	for category: String in LanguageData.CATEGORIES:
 		if not _reports.has(category):
 			continue
-		var texts: Array = _reports[category].keys()
+		var texts: Array = _listed_texts(category)
 		texts.sort()
 		for text: String in texts:
 			result.append(PackedStringArray(

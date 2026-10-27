@@ -97,7 +97,7 @@ func _on_archive_chosen(archive_path: String) -> void:
 	_data = data
 	_store = ReportStore.new(archive.locale, archive.version)
 	_store.load_saved()
-	_store.keep_only(entries)
+	_store.set_listed(entries)
 
 	_load_screen.set_busy(false, "")
 	await _checker_screen.setup(archive, entries, _store)

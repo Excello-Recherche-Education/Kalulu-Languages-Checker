@@ -133,7 +133,9 @@ media the checker does not use. Handling that in a browser shapes the design:
   makes "come back tomorrow" and "a new version is available" possible. Only one
   is kept: in a browser the whole user filesystem is held in memory, so five
   packs would mean carrying ~295 MB of it. Reports are unaffected — they are
-  saved per locale and outlive the archive they were written against.
+  saved per locale and outlive the archive they were written against. A pack
+  only shows, counts and sends the reports on entries it lists; the others stay
+  saved for the version that lists them.
 - **Saving finishes a few seconds after the pack opens.** The engine's sync to
   IndexedDB is asynchronous and cannot be waited on from GDScript; a 41 MB pack
   took between 2 and 10 seconds in practice, while the tester was already
