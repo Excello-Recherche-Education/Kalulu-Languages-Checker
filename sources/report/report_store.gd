@@ -101,6 +101,15 @@ func count() -> int:
 	return total
 
 
+## Saved reports on entries the open pack does not list: kept, but neither
+## shown nor sent. The checker says how many, so none disappears unnoticed.
+func hidden_count() -> int:
+	var total: int = 0
+	for category: String in _reports:
+		total += _reports[category].size() - _listed_texts(category).size()
+	return total
+
+
 func count_in(category: String) -> int:
 	return _listed_texts(category).size()
 

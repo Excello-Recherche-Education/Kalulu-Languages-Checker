@@ -76,8 +76,10 @@ anonymous `ListBucket` scoped to the same prefix. The root packs and
   `ReportStore` keys them by locale and they outlive the archive. A pack only
   *shows* the reports on entries it lists (`set_listed()`): the others — another
   version's, a word since renamed or marked booklet-only — stay saved, out of the
-  counts and the CSV, and come back with a pack that lists them. Nothing deletes
-  them but *Clear*, which only clears what the tester can see.
+  counts and the CSV, and come back with a pack that lists them; the counter
+  says how many there are ("N earlier reports on entries not in this pack, not
+  sent"), so none disappears unnoticed. Nothing deletes them: `clear()` exists,
+  but nothing calls it.
 - **The posted report loses its byte order mark; the endpoint puts it back.**
   `ReportCsv.build()` writes a UTF-8 BOM because Excel on Windows otherwise
   reads the file as Latin-1 and mangles every accented word — which on these

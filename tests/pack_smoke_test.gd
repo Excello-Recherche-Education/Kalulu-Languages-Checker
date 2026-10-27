@@ -69,6 +69,7 @@ func _check_archive(archive_path: String) -> void:
 
 	_report_database_oddities(data)
 	_check_booklet_only_left_out(archive, entries)
+	_check_unlisted_reports_kept(entries)
 	_check_decodes_audio(archive, entries)
 	_check_report_csv(archive, entries, store)
 
@@ -120,6 +121,26 @@ func _check_booklet_only_left_out(archive: PackArchive, entries: Dictionary[Stri
 		print("  %-9s %5d booklet-only, left out" % [pair[0], marked.size()])
 		_expect(shown == 0, "no booklet-only %s is listed (%d are)" % [pair[0].to_lower(), shown])
 	db.close_db()
+
+
+## A report on an entry the pack does not list -- written against another
+## version of it -- is neither counted nor sent, but survives a reload.
+func _check_unlisted_reports_kept(entries: Dictionary[String, Array]) -> void:
+	var word_entries: Array = entries.get(LanguageData.CATEGORY_WORD, [] as Array)
+	if word_entries.is_empty():
+		return
+	var listed: String = (word_entries[0] as Checkable).text
+	var store: ReportStore = ReportStore.new("zz_smoke_test_%d" % Time.get_ticks_usec(), "test")
+	store.set_flagged(LanguageData.CATEGORY_WORD, listed, true)
+	store.set_comment(LanguageData.CATEGORY_WORD, "zz not in any pack", "renamed since")
+	store.set_listed(entries)
+	_expect(store.count() == 1 and store.rows().size() == 1 and store.hidden_count() == 1,
+			"an unlisted report is neither counted nor sent (%d counted, %d hidden)" % [store.count(), store.hidden_count()])
+	var reloaded: ReportStore = ReportStore.new(store.locale, "test")
+	reloaded.load_saved()
+	_expect(reloaded.get_comment(LanguageData.CATEGORY_WORD, "zz not in any pack") == "renamed since",
+			"and survives a reload")
+	DirAccess.remove_absolute(store.save_path())
 
 
 ## Every playable entry claims a recording; make sure one really decodes, so a
